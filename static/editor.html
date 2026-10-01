@@ -1,0 +1,477 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>Редактор — CoworkWiFi Planner</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <style>
+        body {
+            overflow: hidden;
+        }
+
+        .editor-layout {
+            display: flex;
+            height: calc(100vh - 56px);
+        }
+
+        .editor-side {
+            width: 240px;
+            background: #fff;
+            border-right: 1px solid #e0e0e5;
+            padding: 10px;
+            overflow-y: auto;
+            flex-shrink: 0;
+        }
+
+            .editor-side h3 {
+                font-size: 11px;
+                text-transform: uppercase;
+                letter-spacing: .5px;
+                color: #999;
+                margin: 14px 0 6px;
+                font-weight: 600;
+            }
+
+                .editor-side h3:first-child {
+                    margin-top: 0;
+                }
+
+            .editor-side select, .editor-side input[type="text"], .editor-side input[type="number"] {
+                width: 100%;
+                padding: 6px;
+                border: 1px solid #d0d0d8;
+                border-radius: 6px;
+                font-size: 13px;
+                margin-bottom: 6px;
+                box-sizing: border-box;
+            }
+
+        .lib-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 4px;
+        }
+
+        .lib-item {
+            padding: 6px 4px;
+            border: 1px solid #e0e0e5;
+            border-radius: 6px;
+            cursor: pointer;
+            text-align: center;
+            font-size: 10px;
+            background: #fff;
+            transition: all .15s;
+            line-height: 1.2;
+        }
+
+            .lib-item:hover {
+                border-color: #6c5ce7;
+                background: #f8f7ff;
+            }
+
+            .lib-item .ic {
+                display: block;
+                font-size: 18px;
+                margin-bottom: 2px;
+            }
+
+        .tool-btn {
+            display: block;
+            width: 100%;
+            margin-bottom: 4px;
+            padding: 6px;
+            cursor: pointer;
+            border: 1px solid #d0d0d8;
+            background: #fff;
+            border-radius: 6px;
+            font-size: 12px;
+            text-align: left;
+        }
+
+            .tool-btn:hover {
+                background: #f5f5f7;
+            }
+
+            .tool-btn.active {
+                background: #6c5ce7;
+                color: #fff;
+                border-color: #6c5ce7;
+            }
+
+        .editor-canvas {
+            flex: 1;
+            background: #f5f5f7;
+            overflow: auto;
+            position: relative;
+        }
+
+        .canvas-hint {
+            position: absolute;
+            top: 12px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(44,44,58,.9);
+            color: #fff;
+            padding: 6px 14px;
+            border-radius: 20px;
+            font-size: 12px;
+            z-index: 5;
+            pointer-events: none;
+            white-space: nowrap;
+        }
+
+        #planSvg {
+            display: block;
+            user-select: none;
+            background: #fff;
+        }
+
+        .editor-props {
+            width: 280px;
+            background: #fff;
+            border-left: 1px solid #e0e0e5;
+            overflow-y: auto;
+            flex-shrink: 0;
+        }
+
+        .props-header {
+            padding: 12px 14px;
+            border-bottom: 1px solid #e0e0e5;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+            .props-header .icon {
+                width: 34px;
+                height: 34px;
+                background: #6c5ce7;
+                border-radius: 8px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                color: #fff;
+                font-size: 16px;
+            }
+
+            .props-header .title {
+                font-size: 13px;
+                font-weight: 600;
+            }
+
+            .props-header .subtitle {
+                font-size: 10px;
+                color: #999;
+            }
+
+        .props-section {
+            padding: 10px 14px;
+            border-bottom: 1px solid #e0e0e5;
+        }
+
+            .props-section h4 {
+                font-size: 10px;
+                text-transform: uppercase;
+                letter-spacing: .5px;
+                color: #999;
+                margin-bottom: 8px;
+                font-weight: 600;
+            }
+
+        .props-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 6px;
+            font-size: 12px;
+            gap: 6px;
+        }
+
+            .props-row label {
+                color: #777;
+                flex-shrink: 0;
+            }
+
+            .props-row input, .props-row select {
+                flex: 1;
+                padding: 4px 6px;
+                border: 1px solid #d0d0d8;
+                border-radius: 4px;
+                font-size: 12px;
+                outline: none;
+                min-width: 0;
+            }
+
+        .props-empty {
+            padding: 30px 20px;
+            text-align: center;
+            color: #999;
+            font-size: 13px;
+        }
+
+            .props-empty .big {
+                font-size: 40px;
+                margin-bottom: 10px;
+                opacity: .4;
+            }
+
+        .btn-danger {
+            background: #e74c3c;
+            color: #fff;
+            border: none;
+            padding: 8px 14px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 13px;
+            width: 100%;
+            margin-top: 6px;
+        }
+
+            .btn-danger:hover {
+                background: #c0392b;
+            }
+
+        .btn-primary {
+            background: #6c5ce7;
+            color: #fff;
+            border: none;
+            padding: 8px 14px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 13px;
+            width: 100%;
+        }
+
+            .btn-primary:hover {
+                background: #8171f0;
+            }
+
+        /* Модальное окно создания проекта */
+        .modal-mask {
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,.4);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 100;
+        }
+
+            .modal-mask.show {
+                display: flex;
+            }
+
+        .modal {
+            background: #fff;
+            padding: 24px;
+            border-radius: 12px;
+            width: 340px;
+            box-shadow: 0 10px 40px rgba(0,0,0,.2);
+        }
+
+            .modal h2 {
+                font-size: 16px;
+                margin-bottom: 14px;
+            }
+
+            .modal label {
+                display: block;
+                font-size: 12px;
+                color: #777;
+                margin: 8px 0 4px;
+            }
+
+            .modal input {
+                width: 100%;
+                padding: 8px;
+                border: 1px solid #d0d0d8;
+                border-radius: 6px;
+                font-size: 13px;
+                box-sizing: border-box;
+            }
+
+        .modal-btns {
+            display: flex;
+            gap: 8px;
+            margin-top: 16px;
+        }
+
+            .modal-btns button {
+                flex: 1;
+            }
+
+        .zoom-bar {
+            position: absolute;
+            bottom: 16px;
+            right: 16px;
+            background: #fff;
+            border: 1px solid #d0d0d8;
+            border-radius: 6px;
+            display: flex;
+            box-shadow: 0 2px 8px rgba(0,0,0,.1);
+            z-index: 5;
+        }
+
+            .zoom-bar button {
+                width: 32px;
+                height: 32px;
+                border: none;
+                background: none;
+                cursor: pointer;
+                font-size: 14px;
+            }
+
+                .zoom-bar button:hover {
+                    background: #f5f5f7;
+                }
+
+            .zoom-bar span {
+                padding: 0 8px;
+                font-size: 12px;
+                line-height: 32px;
+                color: #777;
+                border-left: 1px solid #e0e0e5;
+                border-right: 1px solid #e0e0e5;
+            }
+    </style>
+</head>
+<body>
+    <header class="topbar">
+        <div class="logo">📡 CoworkWiFi Planner</div>
+        <nav>
+            <a href="/static/index.html">Главная</a>
+            <a href="/static/editor.html" class="active">Редактор</a>
+            <a href="/static/admin.html" id="adminLink" style="display:none">Админ</a>
+        </nav>
+        <div class="user-info">
+            <span id="userName"></span>
+            <button id="logoutBtn" class="btn">Выйти</button>
+        </div>
+    </header>
+
+    <div class="editor-layout">
+
+        <!-- ЛЕВАЯ ПАНЕЛЬ -->
+        <aside class="editor-side">
+            <h3>Проект</h3>
+            <select id="projectSelect">
+                <option value="">— Выберите —</option>
+            </select>
+            <button class="btn-primary" id="newProjectBtn" style="margin-bottom:6px">➕ Новый проект</button>
+
+            <h3>Инструмент</h3>
+            <button class="tool-btn active" data-tool="select">🖱 Выделение</button>
+            <button class="tool-btn" data-tool="wall">🧱 Стена (клик-клик)</button>
+            <button class="tool-btn" data-tool="room">⬛ Комната (по углам)</button>
+            <button class="tool-btn" data-tool="door">🚪 Дверь</button>
+            <button class="tool-btn" data-tool="window">🪟 Окно</button>
+            <button class="tool-btn" data-tool="text">🅰 Текст</button>
+
+            <h3>Материал стены</h3>
+            <select id="wallMaterial">
+                <option value="concrete">Бетон</option>
+                <option value="brick">Кирпич</option>
+                <option value="drywall">Гипсокартон</option>
+                <option value="wood">Дерево</option>
+                <option value="glass">Стекло</option>
+            </select>
+
+            <h3>Точки доступа</h3>
+            <div class="lib-grid">
+                <div class="lib-item" data-add="ap"><span class="ic">📡</span>Точка доступа</div>
+            </div>
+
+            <h3>Устройства</h3>
+            <div class="lib-grid">
+                <div class="lib-item" data-add="pc"><span class="ic">🖥</span>ПК</div>
+                <div class="lib-item" data-add="laptop"><span class="ic">💻</span>Ноутбук</div>
+                <div class="lib-item" data-add="printer"><span class="ic">🖨</span>Принтер</div>
+                <div class="lib-item" data-add="scanner"><span class="ic">📠</span>Сканер</div>
+                <div class="lib-item" data-add="camera"><span class="ic">📹</span>Камера</div>
+                <div class="lib-item" data-add="iot"><span class="ic">🌡</span>IoT</div>
+            </div>
+
+            <h3>Мебель</h3>
+            <div class="lib-grid">
+                <div class="lib-item" data-add="sofa"><span class="ic">🛋</span>Диван</div>
+                <div class="lib-item" data-add="table"><span class="ic">🪑</span>Стол</div>
+                <div class="lib-item" data-add="chair"><span class="ic">💺</span>Стул</div>
+                <div class="lib-item" data-add="plant"><span class="ic">🌿</span>Растение</div>
+            </div>
+
+            <h3>Слои</h3>
+            <label style="font-size:12px;display:block;margin-bottom:4px">
+                <input type="checkbox" id="layerWalls" checked> Стены
+            </label>
+            <label style="font-size:12px;display:block;margin-bottom:4px">
+                <input type="checkbox" id="layerFurniture" checked> Мебель
+            </label>
+            <label style="font-size:12px;display:block;margin-bottom:4px">
+                <input type="checkbox" id="layerDevices" checked> Устройства
+            </label>
+            <label style="font-size:12px;display:block;margin-bottom:4px">
+                <input type="checkbox" id="layerCoverage" checked> Зона покрытия
+            </label>
+        </aside>
+
+        <!-- КАНВАС -->
+        <div class="editor-canvas" id="canvasWrap">
+            <div class="canvas-hint" id="canvasHint">Создайте или выберите проект</div>
+            <svg id="planSvg" width="1200" height="800">
+                <defs>
+                    <pattern id="grid10" width="10" height="10" patternUnits="userSpaceOnUse">
+                        <path d="M 10 0 L 0 0 0 10" fill="none" stroke="#f0f0f5" stroke-width="0.5" />
+                    </pattern>
+                    <pattern id="grid100" width="100" height="100" patternUnits="userSpaceOnUse">
+                        <rect width="100" height="100" fill="url(#grid10)" />
+                        <path d="M 100 0 L 0 0 0 100" fill="none" stroke="#dcdce4" stroke-width="1" />
+                    </pattern>
+                </defs>
+                <rect width="100%" height="100%" fill="url(#grid100)" id="gridBg" />
+                <g id="layerCoverage"></g>
+                <g id="layerRooms"></g>
+                <g id="layerWalls"></g>
+                <g id="layerFurniture"></g>
+                <g id="layerText"></g>
+                <g id="layerDevices"></g>
+                <g id="layerAps"></g>
+                <g id="layerDraft"></g>
+            </svg>
+
+            <div class="zoom-bar">
+                <button id="zoomOut">−</button>
+                <span id="zoomLabel">100%</span>
+                <button id="zoomIn">+</button>
+            </div>
+        </div>
+
+        <!-- ПРАВАЯ ПАНЕЛЬ -->
+        <aside class="editor-props" id="propsPanel">
+            <div class="props-empty">
+                <div class="big">🎨</div>
+                <div>Выберите объект на холсте</div>
+            </div>
+        </aside>
+    </div>
+
+    <!-- МОДАЛЬНОЕ ОКНО -->
+    <div class="modal-mask" id="modalMask">
+        <div class="modal">
+            <h2>Новый проект</h2>
+            <label>Название</label>
+            <input type="text" id="npName" placeholder="Коворкинг" value="Мой коворкинг">
+            <label>Ширина помещения, м</label>
+            <input type="number" id="npWidth" value="30" min="5" max="200">
+            <label>Высота помещения, м</label>
+            <input type="number" id="npHeight" value="20" min="5" max="200">
+            <div class="modal-btns">
+                <button class="btn" id="npCancel">Отмена</button>
+                <button class="btn-primary" id="npCreate">Создать</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/js/api.js"></script>
+    <script src="/static/js/editor.js"></script>
+</body>
+</html>

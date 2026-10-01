@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<title>Измерения</title>
+<link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="logo">📡 CoworkWiFi Planner</div>
+  <nav>
+    <a href="/static/index.html">Главная</a>
+    <a href="/static/editor.html">Редактор</a>
+    <a href="/static/measurements.html" class="active">Измерения</a>
+    <a href="/static/heatmap.html">Тепловые карты</a>
+    <a href="/static/admin.html" id="adminLink" style="display:none">Админ</a>
+  </nav>
+  <div class="user-info"><span id="userName"></span></div>
+</header>
+<main class="container">
+  <h1>Измерения RSSI / SNR / интерференции</h1>
+  <p>Раздел в разработке. API уже готов: <code>POST /api/measurements/plan/{id}</code></p>
+  <p>Пример запроса:</p>
+  <pre>{
+  "x": 5.0, "y": 3.0,
+  "rssi": -55, "snr": 32, "interference": -88,
+  "mode": "manual"
+}</pre>
+</main>
+<script src="/static/js/api.js"></script>
+<script>
+  API.get('/api/auth/me').then(function (u) {
+    document.getElementById('userName').textContent = u.full_name;
+    if (u.role === 'admin') document.getElementById('adminLink').style.display = '';
+  });
+</script>
+</body>
+</html>

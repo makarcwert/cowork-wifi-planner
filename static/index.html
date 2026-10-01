@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<title>CoworkWiFi Planner</title>
+<link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="logo">📡 CoworkWiFi Planner</div>
+  <nav>
+    <a href="/static/index.html" class="active">Главная</a>
+    <a href="/static/editor.html">Редактор</a>
+    <a href="/static/measurements.html">Измерения</a>
+    <a href="/static/heatmap.html">Тепловые карты</a>
+    <a href="/static/admin.html" id="adminLink" style="display:none">Админ</a>
+  </nav>
+  <div class="user-info">
+    <span id="userName"></span>
+    <button id="logoutBtn" class="btn">Выйти</button>
+  </div>
+</header>
+
+<main class="container">
+  <section class="hero">
+    <h1>Программа проверки зоны покрытия Wi-Fi в коворкинге</h1>
+    <p>Загрузите план помещения, расставьте точки доступа, введите измерения RSSI/SNR — и получите тепловую карту покрытия.</p>
+    <div class="hero-actions">
+      <a href="/static/editor.html" class="btn-primary">Открыть редактор</a>
+      <a href="/docs" class="btn" target="_blank">API-документация</a>
+    </div>
+  </section>
+
+  <section class="features">
+    <div class="feature">
+      <div class="feature-icon">🗺</div>
+      <h3>Загрузка плана</h3>
+      <p>PNG, JPG или SVG с реальными размерами помещения</p>
+    </div>
+    <div class="feature">
+      <div class="feature-icon">📡</div>
+      <h3>Расстановка точек доступа</h3>
+      <p>Укажите модель, мощность, канал и тип SSID</p>
+    </div>
+    <div class="feature">
+      <div class="feature-icon">📊</div>
+      <h3>Измерения</h3>
+      <p>RSSI, SNR, интерференция — вручную или автоматически</p>
+    </div>
+    <div class="feature">
+      <div class="feature-icon">🔥</div>
+      <h3>Тепловые карты</h3>
+      <p>IDW-интерполяция и наложение на план помещения</p>
+    </div>
+    <div class="feature">
+      <div class="feature-icon">📄</div>
+      <h3>Экспорт отчётов</h3>
+      <p>CSV и PDF с результатами измерений</p>
+    </div>
+    <div class="feature">
+      <div class="feature-icon">🔐</div>
+      <h3>Роли и доступ</h3>
+      <p>Администратор, инженер, аналитик</p>
+    </div>
+  </section>
+</main>
+
+<script src="/static/js/api.js"></script>
+<script>
+(function () {
+  if (!API.getToken()) { window.location.href = '/static/login.html'; return; }
+  API.get('/api/auth/me').then(function (u) {
+    document.getElementById('userName').textContent = u.full_name + ' (' + u.role + ')';
+    if (u.role === 'admin') document.getElementById('adminLink').style.display = '';
+  }).catch(function () {
+    API.clearToken();
+    window.location.href = '/static/login.html';
+  });
+  document.getElementById('logoutBtn').addEventListener('click', function () {
+    API.clearToken();
+    window.location.href = '/static/login.html';
+  });
+})();
+</script>
+</body>
+</html>

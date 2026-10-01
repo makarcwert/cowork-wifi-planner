@@ -1,0 +1,52 @@
+# ============ Python ============
+venv/
+env/
+.venv/
+__pycache__/
+*.py[cod]
+*.so
+build/
+dist/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+
+# ============ База данных ============
+*.db
+*.sqlite
+*.sqlite3
+
+# ============ Загруженные файлы ============
+uploads/*
+!uploads/.gitkeep
+
+# ============ IDE / редакторы ============
+.vs/
+.vscode/
+.idea/
+*.swp
+*~
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# ============ Логи и временные ============
+*.log
+logs/
+backups/
+*.bak
+*.tmp
+newhash.txt
+
+# ============ Секреты ============
+.env
+
+# ============ Служебные файлы проекта ============
+structureProject.txt
+
+# ============ Windows ============
+desktop.ini
+Thumbs.db
+$RECYCLE.BIN/
+System Volume Information/
