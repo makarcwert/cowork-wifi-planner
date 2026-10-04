@@ -16,7 +16,7 @@
     var password = document.getElementById('password').value;
 
     var form = new FormData();
-    form.append('username', email); // OAuth2 ожидает username
+    form.append('username', email);
     form.append('password', password);
 
     API.postForm('/api/auth/login', form)

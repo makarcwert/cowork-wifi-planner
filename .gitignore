@@ -1,4 +1,4 @@
-# ============ Python ============
+# Python
 venv/
 env/
 .venv/
@@ -11,16 +11,16 @@ dist/
 .pytest_cache/
 .mypy_cache/
 
-# ============ База данных ============
+# База данных
 *.db
 *.sqlite
 *.sqlite3
 
-# ============ Загруженные файлы ============
+# Загруженные файлы
 uploads/*
 !uploads/.gitkeep
 
-# ============ IDE / редакторы ============
+# IDE
 .vs/
 .vscode/
 .idea/
@@ -28,10 +28,8 @@ uploads/*
 *~
 *.user
 *.suo
-*.userosscache
-*.sln.docstates
 
-# ============ Логи и временные ============
+# Логи
 *.log
 logs/
 backups/
@@ -39,14 +37,12 @@ backups/
 *.tmp
 newhash.txt
 
-# ============ Секреты ============
+# Секреты
 .env
 
-# ============ Служебные файлы проекта ============
+# Служебные
 structureProject.txt
 
-# ============ Windows ============
+# Windows
 desktop.ini
 Thumbs.db
-$RECYCLE.BIN/
-System Volume Information/

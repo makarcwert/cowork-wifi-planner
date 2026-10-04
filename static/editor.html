@@ -1,477 +1,612 @@
 <!DOCTYPE html>
 <html lang="ru">
 <head>
-    <meta charset="UTF-8">
-    <title>Редактор — CoworkWiFi Planner</title>
-    <link rel="stylesheet" href="/static/css/style.css">
-    <style>
-        body {
-            overflow: hidden;
-        }
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Редактор — CoworkWiFi Planner</title>
+<link rel="stylesheet" href="/static/css/style.css">
+<style>
+  /* ============ Палитра редактора ============ */
+  .palette-category {
+    margin-bottom: 8px;
+  }
+  .palette-category h4 {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: .5px;
+    color: #999;
+    margin: 12px 0 4px;
+    font-weight: 600;
+  }
+  .palette-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 4px;
+  }
+  .palette-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 6px 4px;
+    border: 1px solid #e0e0e5;
+    border-radius: 6px;
+    cursor: pointer;
+    background: #fff;
+    transition: all .15s;
+    user-select: none;
+    gap: 2px;
+  }
+  .palette-item:hover {
+    border-color: #6c5ce7;
+    background: #f8f7ff;
+    transform: translateY(-1px);
+  }
+  .palette-item.active {
+    border-color: #6c5ce7;
+    background: #f0eeff;
+    box-shadow: 0 0 0 2px rgba(108,92,231,.15);
+  }
+  .palette-item svg {
+    width: 28px;
+    height: 28px;
+    color: #6c5ce7;
+    display: block;
+  }
+  .palette-item .name {
+    font-size: 9px;
+    color: #666;
+    text-align: center;
+    line-height: 1.1;
+  }
+  .palette-item.dragging {
+    opacity: 0.4;
+    transform: scale(0.95);
+  }
 
-        .editor-layout {
-            display: flex;
-            height: calc(100vh - 56px);
-        }
+  /* ============ Drag-ghost ============ */
+  .drag-ghost {
+    position: fixed;
+    pointer-events: none;
+    z-index: 9999;
+    width: 40px;
+    height: 40px;
+    color: #6c5ce7;
+    transform: translate(-50%, -50%);
+    filter: drop-shadow(0 4px 8px rgba(0,0,0,.3));
+  }
+  .drag-ghost svg {
+    width: 100%;
+    height: 100%;
+  }
 
-        .editor-side {
-            width: 240px;
-            background: #fff;
-            border-right: 1px solid #e0e0e5;
-            padding: 10px;
-            overflow-y: auto;
-            flex-shrink: 0;
-        }
+  .editor-canvas.drag-over {
+    background: #eef0ff;
+  }
 
-            .editor-side h3 {
-                font-size: 11px;
-                text-transform: uppercase;
-                letter-spacing: .5px;
-                color: #999;
-                margin: 14px 0 6px;
-                font-weight: 600;
-            }
+  /* ============ Рамка выделения ============ */
+  .selection-rect {
+    position: absolute;
+    border: 2px dashed #6c5ce7;
+    background: rgba(108,92,231,.08);
+    pointer-events: none;
+    z-index: 4;
+    display: none;
+  }
 
-                .editor-side h3:first-child {
-                    margin-top: 0;
-                }
+  /* ============ Индикатор сетки ============ */
+  .snap-indicator {
+    position: absolute;
+    background: rgba(108,92,231,.15);
+    border: 1px solid #6c5ce7;
+    border-radius: 4px;
+    pointer-events: none;
+    z-index: 3;
+    display: none;
+  }
 
-            .editor-side select, .editor-side input[type="text"], .editor-side input[type="number"] {
-                width: 100%;
-                padding: 6px;
-                border: 1px solid #d0d0d8;
-                border-radius: 6px;
-                font-size: 13px;
-                margin-bottom: 6px;
-                box-sizing: border-box;
-            }
+  /* ============ Resize-маркеры ============ */
+  .resize-marker {
+    fill: #fff;
+    stroke: #6c5ce7;
+    stroke-width: 2;
+    cursor: pointer;
+  }
+  .resize-marker:hover {
+    fill: #6c5ce7;
+  }
 
-        .lib-grid {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 4px;
-        }
-
-        .lib-item {
-            padding: 6px 4px;
-            border: 1px solid #e0e0e5;
-            border-radius: 6px;
-            cursor: pointer;
-            text-align: center;
-            font-size: 10px;
-            background: #fff;
-            transition: all .15s;
-            line-height: 1.2;
-        }
-
-            .lib-item:hover {
-                border-color: #6c5ce7;
-                background: #f8f7ff;
-            }
-
-            .lib-item .ic {
-                display: block;
-                font-size: 18px;
-                margin-bottom: 2px;
-            }
-
-        .tool-btn {
-            display: block;
-            width: 100%;
-            margin-bottom: 4px;
-            padding: 6px;
-            cursor: pointer;
-            border: 1px solid #d0d0d8;
-            background: #fff;
-            border-radius: 6px;
-            font-size: 12px;
-            text-align: left;
-        }
-
-            .tool-btn:hover {
-                background: #f5f5f7;
-            }
-
-            .tool-btn.active {
-                background: #6c5ce7;
-                color: #fff;
-                border-color: #6c5ce7;
-            }
-
-        .editor-canvas {
-            flex: 1;
-            background: #f5f5f7;
-            overflow: auto;
-            position: relative;
-        }
-
-        .canvas-hint {
-            position: absolute;
-            top: 12px;
-            left: 50%;
-            transform: translateX(-50%);
-            background: rgba(44,44,58,.9);
-            color: #fff;
-            padding: 6px 14px;
-            border-radius: 20px;
-            font-size: 12px;
-            z-index: 5;
-            pointer-events: none;
-            white-space: nowrap;
-        }
-
-        #planSvg {
-            display: block;
-            user-select: none;
-            background: #fff;
-        }
-
-        .editor-props {
-            width: 280px;
-            background: #fff;
-            border-left: 1px solid #e0e0e5;
-            overflow-y: auto;
-            flex-shrink: 0;
-        }
-
-        .props-header {
-            padding: 12px 14px;
-            border-bottom: 1px solid #e0e0e5;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-
-            .props-header .icon {
-                width: 34px;
-                height: 34px;
-                background: #6c5ce7;
-                border-radius: 8px;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                color: #fff;
-                font-size: 16px;
-            }
-
-            .props-header .title {
-                font-size: 13px;
-                font-weight: 600;
-            }
-
-            .props-header .subtitle {
-                font-size: 10px;
-                color: #999;
-            }
-
-        .props-section {
-            padding: 10px 14px;
-            border-bottom: 1px solid #e0e0e5;
-        }
-
-            .props-section h4 {
-                font-size: 10px;
-                text-transform: uppercase;
-                letter-spacing: .5px;
-                color: #999;
-                margin-bottom: 8px;
-                font-weight: 600;
-            }
-
-        .props-row {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 6px;
-            font-size: 12px;
-            gap: 6px;
-        }
-
-            .props-row label {
-                color: #777;
-                flex-shrink: 0;
-            }
-
-            .props-row input, .props-row select {
-                flex: 1;
-                padding: 4px 6px;
-                border: 1px solid #d0d0d8;
-                border-radius: 4px;
-                font-size: 12px;
-                outline: none;
-                min-width: 0;
-            }
-
-        .props-empty {
-            padding: 30px 20px;
-            text-align: center;
-            color: #999;
-            font-size: 13px;
-        }
-
-            .props-empty .big {
-                font-size: 40px;
-                margin-bottom: 10px;
-                opacity: .4;
-            }
-
-        .btn-danger {
-            background: #e74c3c;
-            color: #fff;
-            border: none;
-            padding: 8px 14px;
-            border-radius: 6px;
-            cursor: pointer;
-            font-size: 13px;
-            width: 100%;
-            margin-top: 6px;
-        }
-
-            .btn-danger:hover {
-                background: #c0392b;
-            }
-
-        .btn-primary {
-            background: #6c5ce7;
-            color: #fff;
-            border: none;
-            padding: 8px 14px;
-            border-radius: 6px;
-            cursor: pointer;
-            font-size: 13px;
-            width: 100%;
-        }
-
-            .btn-primary:hover {
-                background: #8171f0;
-            }
-
-        /* Модальное окно создания проекта */
-        .modal-mask {
-            position: fixed;
-            inset: 0;
-            background: rgba(0,0,0,.4);
-            display: none;
-            align-items: center;
-            justify-content: center;
-            z-index: 100;
-        }
-
-            .modal-mask.show {
-                display: flex;
-            }
-
-        .modal {
-            background: #fff;
-            padding: 24px;
-            border-radius: 12px;
-            width: 340px;
-            box-shadow: 0 10px 40px rgba(0,0,0,.2);
-        }
-
-            .modal h2 {
-                font-size: 16px;
-                margin-bottom: 14px;
-            }
-
-            .modal label {
-                display: block;
-                font-size: 12px;
-                color: #777;
-                margin: 8px 0 4px;
-            }
-
-            .modal input {
-                width: 100%;
-                padding: 8px;
-                border: 1px solid #d0d0d8;
-                border-radius: 6px;
-                font-size: 13px;
-                box-sizing: border-box;
-            }
-
-        .modal-btns {
-            display: flex;
-            gap: 8px;
-            margin-top: 16px;
-        }
-
-            .modal-btns button {
-                flex: 1;
-            }
-
-        .zoom-bar {
-            position: absolute;
-            bottom: 16px;
-            right: 16px;
-            background: #fff;
-            border: 1px solid #d0d0d8;
-            border-radius: 6px;
-            display: flex;
-            box-shadow: 0 2px 8px rgba(0,0,0,.1);
-            z-index: 5;
-        }
-
-            .zoom-bar button {
-                width: 32px;
-                height: 32px;
-                border: none;
-                background: none;
-                cursor: pointer;
-                font-size: 14px;
-            }
-
-                .zoom-bar button:hover {
-                    background: #f5f5f7;
-                }
-
-            .zoom-bar span {
-                padding: 0 8px;
-                font-size: 12px;
-                line-height: 32px;
-                color: #777;
-                border-left: 1px solid #e0e0e5;
-                border-right: 1px solid #e0e0e5;
-            }
-    </style>
+  /* ============ Бейдж режима ============ */
+  .mode-badge {
+    position: absolute;
+    bottom: 16px;
+    left: 16px;
+    background: #2c2c3a;
+    color: #fff;
+    padding: 6px 14px;
+    border-radius: 20px;
+    font-size: 11px;
+    z-index: 5;
+    display: flex;
+    gap: 10px;
+    align-items: center;
+  }
+  .mode-badge .kbd {
+    background: rgba(255,255,255,.15);
+    padding: 1px 6px;
+    border-radius: 4px;
+    font-family: monospace;
+    font-size: 10px;
+  }
+  .mode-badge .snap-on { color: #55efc4; }
+  .mode-badge .snap-off { color: #ff7675; }
+  .mode-badge button {
+    background: rgba(255,255,255,.2);
+    border: none;
+    color: #fff;
+    padding: 3px 8px;
+    border-radius: 12px;
+    cursor: pointer;
+    font-size: 10px;
+    font-family: inherit;
+  }
+</style>
 </head>
-<body>
-    <header class="topbar">
-        <div class="logo">📡 CoworkWiFi Planner</div>
-        <nav>
-            <a href="/static/index.html">Главная</a>
-            <a href="/static/editor.html" class="active">Редактор</a>
-            <a href="/static/admin.html" id="adminLink" style="display:none">Админ</a>
-        </nav>
-        <div class="user-info">
-            <span id="userName"></span>
-            <button id="logoutBtn" class="btn">Выйти</button>
+<body class="editor-page">
+<header class="topbar">
+  <div class="logo">📡 CoworkWiFi Planner</div>
+  <nav>
+    <a href="/static/index.html">Главная</a>
+    <a href="/static/editor.html" class="active">Редактор</a>
+    <a href="/static/measurements.html">Измерения</a>
+    <a href="/static/admin.html" id="adminLink" style="display:none">Админ</a>
+  </nav>
+  <div class="user-info">
+    <span id="userName"></span>
+    <button id="logoutBtn" class="btn">Выйти</button>
+  </div>
+</header>
+
+<div class="editor-layout">
+
+  <!-- ЛЕВАЯ ПАНЕЛЬ -->
+  <aside class="editor-side">
+    <h3>Проект</h3>
+    <select id="projectSelect">
+      <option value="">— Выберите —</option>
+    </select>
+    <button class="btn-primary" id="newProjectBtn" style="margin-bottom:6px;width:100%">➕ Новый проект</button>
+
+    <h3>Инструмент</h3>
+    <button class="tool-btn active" data-tool="select">🖱 Выделение</button>
+    <button class="tool-btn" data-tool="room">⬛ Комната (по углам)</button>
+    <button class="tool-btn" data-tool="door">🚪 Дверь</button>
+    <button class="tool-btn" data-tool="window">🪟 Окно</button>
+    <button class="tool-btn" data-tool="text">🅰 Текст</button>
+
+    <!-- ============ ПАЛИТРА ============ -->
+    <div class="palette-category">
+      <h4>Сеть</h4>
+      <div class="palette-grid">
+        <div class="palette-item" draggable="true" data-add="ap" title="Точка доступа">
+          <div data-icon="ap"></div>
+          <span class="name">Точка доступа</span>
         </div>
-    </header>
-
-    <div class="editor-layout">
-
-        <!-- ЛЕВАЯ ПАНЕЛЬ -->
-        <aside class="editor-side">
-            <h3>Проект</h3>
-            <select id="projectSelect">
-                <option value="">— Выберите —</option>
-            </select>
-            <button class="btn-primary" id="newProjectBtn" style="margin-bottom:6px">➕ Новый проект</button>
-
-            <h3>Инструмент</h3>
-            <button class="tool-btn active" data-tool="select">🖱 Выделение</button>
-            <button class="tool-btn" data-tool="wall">🧱 Стена (клик-клик)</button>
-            <button class="tool-btn" data-tool="room">⬛ Комната (по углам)</button>
-            <button class="tool-btn" data-tool="door">🚪 Дверь</button>
-            <button class="tool-btn" data-tool="window">🪟 Окно</button>
-            <button class="tool-btn" data-tool="text">🅰 Текст</button>
-
-            <h3>Материал стены</h3>
-            <select id="wallMaterial">
-                <option value="concrete">Бетон</option>
-                <option value="brick">Кирпич</option>
-                <option value="drywall">Гипсокартон</option>
-                <option value="wood">Дерево</option>
-                <option value="glass">Стекло</option>
-            </select>
-
-            <h3>Точки доступа</h3>
-            <div class="lib-grid">
-                <div class="lib-item" data-add="ap"><span class="ic">📡</span>Точка доступа</div>
-            </div>
-
-            <h3>Устройства</h3>
-            <div class="lib-grid">
-                <div class="lib-item" data-add="pc"><span class="ic">🖥</span>ПК</div>
-                <div class="lib-item" data-add="laptop"><span class="ic">💻</span>Ноутбук</div>
-                <div class="lib-item" data-add="printer"><span class="ic">🖨</span>Принтер</div>
-                <div class="lib-item" data-add="scanner"><span class="ic">📠</span>Сканер</div>
-                <div class="lib-item" data-add="camera"><span class="ic">📹</span>Камера</div>
-                <div class="lib-item" data-add="iot"><span class="ic">🌡</span>IoT</div>
-            </div>
-
-            <h3>Мебель</h3>
-            <div class="lib-grid">
-                <div class="lib-item" data-add="sofa"><span class="ic">🛋</span>Диван</div>
-                <div class="lib-item" data-add="table"><span class="ic">🪑</span>Стол</div>
-                <div class="lib-item" data-add="chair"><span class="ic">💺</span>Стул</div>
-                <div class="lib-item" data-add="plant"><span class="ic">🌿</span>Растение</div>
-            </div>
-
-            <h3>Слои</h3>
-            <label style="font-size:12px;display:block;margin-bottom:4px">
-                <input type="checkbox" id="layerWalls" checked> Стены
-            </label>
-            <label style="font-size:12px;display:block;margin-bottom:4px">
-                <input type="checkbox" id="layerFurniture" checked> Мебель
-            </label>
-            <label style="font-size:12px;display:block;margin-bottom:4px">
-                <input type="checkbox" id="layerDevices" checked> Устройства
-            </label>
-            <label style="font-size:12px;display:block;margin-bottom:4px">
-                <input type="checkbox" id="layerCoverage" checked> Зона покрытия
-            </label>
-        </aside>
-
-        <!-- КАНВАС -->
-        <div class="editor-canvas" id="canvasWrap">
-            <div class="canvas-hint" id="canvasHint">Создайте или выберите проект</div>
-            <svg id="planSvg" width="1200" height="800">
-                <defs>
-                    <pattern id="grid10" width="10" height="10" patternUnits="userSpaceOnUse">
-                        <path d="M 10 0 L 0 0 0 10" fill="none" stroke="#f0f0f5" stroke-width="0.5" />
-                    </pattern>
-                    <pattern id="grid100" width="100" height="100" patternUnits="userSpaceOnUse">
-                        <rect width="100" height="100" fill="url(#grid10)" />
-                        <path d="M 100 0 L 0 0 0 100" fill="none" stroke="#dcdce4" stroke-width="1" />
-                    </pattern>
-                </defs>
-                <rect width="100%" height="100%" fill="url(#grid100)" id="gridBg" />
-                <g id="layerCoverage"></g>
-                <g id="layerRooms"></g>
-                <g id="layerWalls"></g>
-                <g id="layerFurniture"></g>
-                <g id="layerText"></g>
-                <g id="layerDevices"></g>
-                <g id="layerAps"></g>
-                <g id="layerDraft"></g>
-            </svg>
-
-            <div class="zoom-bar">
-                <button id="zoomOut">−</button>
-                <span id="zoomLabel">100%</span>
-                <button id="zoomIn">+</button>
-            </div>
+        <div class="palette-item" draggable="true" data-add="switch" title="Коммутатор">
+          <div data-icon="switch"></div>
+          <span class="name">Коммутатор</span>
         </div>
-
-        <!-- ПРАВАЯ ПАНЕЛЬ -->
-        <aside class="editor-props" id="propsPanel">
-            <div class="props-empty">
-                <div class="big">🎨</div>
-                <div>Выберите объект на холсте</div>
-            </div>
-        </aside>
+      </div>
     </div>
 
-    <!-- МОДАЛЬНОЕ ОКНО -->
-    <div class="modal-mask" id="modalMask">
-        <div class="modal">
-            <h2>Новый проект</h2>
-            <label>Название</label>
-            <input type="text" id="npName" placeholder="Коворкинг" value="Мой коворкинг">
-            <label>Ширина помещения, м</label>
-            <input type="number" id="npWidth" value="30" min="5" max="200">
-            <label>Высота помещения, м</label>
-            <input type="number" id="npHeight" value="20" min="5" max="200">
-            <div class="modal-btns">
-                <button class="btn" id="npCancel">Отмена</button>
-                <button class="btn-primary" id="npCreate">Создать</button>
-            </div>
+    <div class="palette-category">
+      <h4>Стены</h4>
+      <div class="palette-grid">
+        <div class="palette-item" draggable="true" data-add="wall_brick" data-material="brick" title="Кирпич">
+          <div data-icon="wall_brick"></div>
+          <span class="name">Кирпич</span>
         </div>
+        <div class="palette-item" draggable="true" data-add="wall_wood" data-material="wood" title="Дерево">
+          <div data-icon="wall_wood"></div>
+          <span class="name">Дерево</span>
+        </div>
+        <div class="palette-item" draggable="true" data-add="wall_drywall" data-material="drywall" title="Гипсокартон">
+          <div data-icon="wall_drywall"></div>
+          <span class="name">Гипсокартон</span>
+        </div>
+        <div class="palette-item" draggable="true" data-add="wall_concrete" data-material="concrete" title="Бетон">
+          <div data-icon="wall_concrete"></div>
+          <span class="name">Бетон</span>
+        </div>
+        <div class="palette-item" draggable="true" data-add="wall_glass" data-material="glass" title="Стекло">
+          <div data-icon="wall_glass"></div>
+          <span class="name">Стекло</span>
+        </div>
+      </div>
+    </div>
+    <div class="palette-category">
+      <h4>Фигуры (стены)</h4>
+      <div class="palette-grid">
+        <div class="palette-item" draggable="true" data-add="shape_rect" title="Прямоугольник">
+          <div data-icon="shape_rect"></div>
+          <span class="name">Прямоуг.</span>
+        </div>
+        <div class="palette-item" draggable="true" data-add="shape_ellipse" title="Эллипс">
+          <div data-icon="shape_ellipse"></div>
+          <span class="name">Эллипс</span>
+        </div>
+        <div class="palette-item" draggable="true" data-add="shape_triangle" title="Треугольник">
+          <div data-icon="shape_triangle"></div>
+          <span class="name">Треуг.</span>
+        </div>
+      </div>
+    </div>
+    <div class="palette-category">
+      <h4>Мебель</h4>
+      <div class="palette-grid">
+        <div class="palette-item" draggable="true" data-add="sofa" title="Диван">
+          <div data-icon="sofa"></div>
+          <span class="name">Диван</span>
+        </div>
+        <div class="palette-item" draggable="true" data-add="chair" title="Стул">
+          <div data-icon="chair"></div>
+          <span class="name">Стул</span>
+        </div>
+        <div class="palette-item" draggable="true" data-add="table" title="Стол">
+          <div data-icon="table"></div>
+          <span class="name">Стол</span>
+        </div>
+        <div class="palette-item" draggable="true" data-add="plant" title="Растение">
+          <div data-icon="plant"></div>
+          <span class="name">Растение</span>
+        </div>
+      </div>
     </div>
 
-    <script src="/static/js/api.js"></script>
-    <script src="/static/js/editor.js"></script>
+    <div class="palette-category">
+      <h4>Техника</h4>
+      <div class="palette-grid">
+        <div class="palette-item" draggable="true" data-add="pc" title="ПК">
+          <div data-icon="pc"></div>
+          <span class="name">ПК</span>
+        </div>
+        <div class="palette-item" draggable="true" data-add="laptop" title="Ноутбук">
+          <div data-icon="laptop"></div>
+          <span class="name">Ноутбук</span>
+        </div>
+        <div class="palette-item" draggable="true" data-add="printer" title="Принтер">
+          <div data-icon="printer"></div>
+          <span class="name">Принтер</span>
+        </div>
+        <div class="palette-item" draggable="true" data-add="scanner" title="Сканер">
+          <div data-icon="scanner"></div>
+          <span class="name">Сканер</span>
+        </div>
+        <div class="palette-item" draggable="true" data-add="camera" title="Камера">
+          <div data-icon="camera"></div>
+          <span class="name">Камера</span>
+        </div>
+        <div class="palette-item" draggable="true" data-add="iot" title="IoT-устройство">
+          <div data-icon="iot"></div>
+          <span class="name">IoT</span>
+        </div>
+      </div>
+    </div>
+
+    <h3>Слои</h3>
+    <label style="font-size:12px;display:block;margin-bottom:4px">
+      <input type="checkbox" id="chkLayerWalls" checked> Стены
+    </label>
+    <label style="font-size:12px;display:block;margin-bottom:4px">
+      <input type="checkbox" id="chkLayerFurniture" checked> Мебель
+    </label>
+    <label style="font-size:12px;display:block;margin-bottom:4px">
+      <input type="checkbox" id="chkLayerDevices" checked> Устройства
+    </label>
+    <label style="font-size:12px;display:block;margin-bottom:4px">
+      <input type="checkbox" id="chkLayerCoverage" checked> Зона покрытия
+    </label>
+    <label style="font-size:12px;display:block;margin-bottom:4px">
+      <input type="checkbox" id="layerCablesChk" checked> Кабели СКС
+    </label>
+    <label style="font-size:12px;display:block;margin-bottom:4px">
+      <input type="checkbox" id="chkDeviceLinks" checked> Связи устройств
+    </label>
+
+    <h3>Анализ покрытия</h3>
+    <button class="tool-btn" id="showHeatmap">🌊 Карта RSSI</button>
+    <button class="tool-btn" id="showSnr">📶 Карта SNR</button>
+    <button class="tool-btn" id="showInterference">🎯 Карта интерференции</button>
+    <button class="tool-btn" id="showChannels">📻 Анализ каналов</button>
+    <button class="tool-btn" id="showStats">📊 Статистика покрытия</button>
+    <button class="tool-btn" id="hideHeatmap">✕ Скрыть карту</button>
+    <label style="font-size:11px;color:#777;margin-top:6px;display:block">
+      Шаг сетки, м:
+      <input type="number" id="gridSize" value="0.5" min="0.25" max="2" step="0.25"
+             style="width:60px;padding:2px 4px;font-size:11px">
+    </label>
+    <label style="font-size:11px;color:#777;margin-top:6px;display:block">
+      <input type="checkbox" id="chkWallBlockCoverage" checked>
+      Стены перекрывают покрытие
+    </label>
+    <div id="channelsPanel" style="display:none;margin-top:8px;
+         background:#f8f7ff;border-radius:8px;padding:10px;font-size:11px"></div>
+
+    <h3>Нагрузка</h3>
+    <button class="tool-btn" id="showLoad">📊 Расчёт нагрузки</button>
+    <button class="tool-btn" id="showConnections">🔌 Связи устройств</button>
+
+    <h3>SSID-профили</h3>
+    <div id="ssidList"></div>
+    <button class="tool-btn" id="addSsidBtn" style="margin-top:4px">➕ Добавить SSID</button>
+
+    <h3>Инфраструктура</h3>
+    <button class="tool-btn" id="wlcBtn">🎛 Контроллер WLC</button>
+    <button class="tool-btn" id="addSwitchBtn">🔀 Добавить коммутатор</button>
+    <button class="tool-btn" id="poeBtn">⚡ PoE-бюджет</button>
+    <button class="tool-btn" id="cableBtn">🔌 Анализ СКС</button>
+
+    <h3>Оптимизация</h3>
+    <button class="tool-btn" id="optimizeBtn">🎯 Подобрать размещение AP</button>
+
+    <h3>Экспорт</h3>
+    <button class="tool-btn" id="exportPngBtn">🖼 Сохранить PNG</button>
+    <button class="tool-btn" id="exportSvgBtn">📐 Сохранить SVG</button>
+    <button class="tool-btn" id="saveLocalBtn">💾 Сохранить в браузер</button>
+    <button class="tool-btn" id="loadLocalBtn">📂 Загрузить из браузера</button>
+    <button class="tool-btn" id="clearLocalBtn">🗑 Очистить хранилище</button>
+
+    <h3>Отчёты</h3>
+    <button class="tool-btn" id="specBtn">📋 Спецификация оборудования</button>
+    <div id="pdfAdminBlock" style="display:none;margin-top:4px">
+      <button class="tool-btn" id="exportPdfBtn"
+              style="background:#6c5ce7;color:#fff;border-color:#6c5ce7">
+        📄 Экспорт PDF-отчёта
+      </button>
+    </div>
+  </aside>
+
+  <!-- КАНВАС -->
+  <div class="editor-canvas" id="canvasWrap">
+    <div class="selection-rect" id="selectionRect"></div>
+    <div class="snap-indicator" id="snapIndicator"></div>
+
+    <div class="canvas-hint" id="canvasHint">Создайте или выберите проект</div>
+
+    <svg id="planSvg" xmlns="http://www.w3.org/2000/svg"
+         viewBox="0 0 1200 800"
+         preserveAspectRatio="xMinYMin meet">
+      <defs>
+        <pattern id="grid10" width="10" height="10" patternUnits="userSpaceOnUse">
+          <path d="M 10 0 L 0 0 0 10" fill="none" stroke="#f4f4f8" stroke-width="0.5"/>
+        </pattern>
+        <pattern id="grid100" width="40" height="40" patternUnits="userSpaceOnUse">
+          <rect width="40" height="40" fill="url(#grid10)"/>
+          <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#e4e4ec" stroke-width="0.8"/>
+        </pattern>
+      </defs>
+
+      <rect x="0" y="0" width="100%" height="100%" fill="#ffffff" pointer-events="none"/>
+      <rect x="0" y="0" width="100%" height="100%" fill="url(#grid100)" pointer-events="none" opacity="0.6"/>
+
+      <g id="layerCoverage" pointer-events="none"></g>
+      <g id="layerDeviceLinks" pointer-events="none"></g>
+      <g id="layerCables" pointer-events="none"></g>
+      <g id="layerRooms"></g>
+      <g id="layerWalls"></g>
+      <g id="layerFurniture"></g>
+      <g id="layerText"></g>
+      <g id="layerDevices"></g>
+      <g id="layerSwitches"></g>
+      <g id="layerAps"></g>
+      <g id="layerDraft" pointer-events="none"></g>
+      <g id="layerSelection" pointer-events="none"></g>
+    </svg>
+
+    <canvas id="heatmapCanvas"></canvas>
+
+    <div class="zoom-bar">
+      <button id="zoomOut">−</button>
+      <span id="zoomLabel">100%</span>
+      <button id="zoomIn">+</button>
+    </div>
+
+    <div class="mode-badge">
+      <span>Сетка: <span id="snapStatus" class="snap-on">0.5 м</span></span>
+      <span class="kbd">R</span> поворот
+      <span class="kbd">Ctrl+D</span> дубль
+      <span class="kbd">Ctrl+Z</span> отмена
+      <button id="toggleSnap">Выкл. сетку</button>
+    </div>
+  </div>
+
+  <!-- ПРАВАЯ ПАНЕЛЬ -->
+  <aside class="editor-props" id="propsPanel">
+    <div class="props-empty">
+      <div class="big">🎨</div>
+      <div>Выберите объект на холсте</div>
+    </div>
+  </aside>
+</div>
+
+<!-- МОДАЛКА: Новый проект -->
+<div class="modal-mask" id="modalMask">
+  <div class="modal">
+    <h2>Новый проект</h2>
+    <label>Название</label>
+    <input type="text" id="npName" placeholder="Коворкинг" value="Мой коворкинг">
+    <label>Ширина помещения, м</label>
+    <input type="number" id="npWidth" value="30" min="5" max="200">
+    <label>Высота помещения, м</label>
+    <input type="number" id="npHeight" value="20" min="5" max="200">
+    <div class="modal-btns">
+      <button class="cancel" id="npCancel">Отмена</button>
+      <button class="ok" id="npCreate">Создать</button>
+    </div>
+  </div>
+</div>
+
+<!-- МОДАЛКА: Статистика покрытия -->
+<div class="modal-mask" id="statsModal">
+  <div class="modal" style="width:460px;max-height:80vh;overflow-y:auto">
+    <h2>📊 Статистика покрытия</h2>
+    <div id="statsBody"></div>
+    <div class="modal-btns">
+      <button class="cancel" id="statsClose">Закрыть</button>
+    </div>
+  </div>
+</div>
+
+<!-- МОДАЛКА: Нагрузка -->
+<div class="modal-mask" id="loadModal">
+  <div class="modal" style="width:560px;max-height:80vh;overflow-y:auto">
+    <h2>📊 Расчёт нагрузки на сеть</h2>
+    <div id="loadBody"></div>
+    <div class="modal-btns">
+      <button class="cancel" id="loadClose">Закрыть</button>
+    </div>
+  </div>
+</div>
+
+<!-- МОДАЛКА: SSID -->
+<div class="modal-mask" id="ssidModal">
+  <div class="modal" style="width:480px;max-height:85vh;overflow-y:auto">
+    <h2 id="ssidModalTitle">SSID-профиль</h2>
+    <label>Имя профиля</label>
+    <input type="text" id="s_name" placeholder="Corporate">
+    <label>Тип</label>
+    <select id="s_type">
+      <option value="corporate">Корпоративный</option>
+      <option value="guest">Гостевой</option>
+      <option value="iot">IoT</option>
+    </select>
+    <label>Метод аутентификации</label>
+    <select id="s_auth">
+      <option value="RADIUS">RADIUS</option>
+      <option value="802.1X">802.1X</option>
+      <option value="Captive Portal">Captive Portal</option>
+      <option value="WPA2-PSK">WPA2-PSK (пароль)</option>
+      <option value="Open">Открытый</option>
+    </select>
+    <label>Шифрование</label>
+    <select id="s_enc">
+      <option value="WPA2-Enterprise">WPA2-Enterprise</option>
+      <option value="WPA3-Enterprise">WPA3-Enterprise</option>
+      <option value="WPA2-PSK">WPA2-PSK</option>
+      <option value="Open">Open (без шифрования)</option>
+    </select>
+    <label>VLAN ID</label>
+    <input type="number" id="s_vlan" placeholder="10">
+    <label>Ограничение скорости, Мбит/с (0 — без ограничений)</label>
+    <input type="number" id="s_bw" value="0">
+    <label style="display:flex;align-items:center;gap:8px;margin-top:10px">
+      <input type="checkbox" id="s_iso"> Изоляция клиентов
+    </label>
+    <label style="display:flex;align-items:center;gap:8px">
+      <input type="checkbox" id="s_int"> Доступ к внутренним ресурсам
+    </label>
+    <label style="display:flex;align-items:center;gap:8px">
+      <input type="checkbox" id="s_net" checked> Доступ в интернет
+    </label>
+    <label style="display:flex;align-items:center;gap:8px">
+      <input type="checkbox" id="s_cp"> Captive Portal
+    </label>
+    <label>Описание</label>
+    <textarea id="s_desc" rows="3" style="width:100%;padding:6px;border:1px solid #d0d0d8;border-radius:6px;font-size:12px;box-sizing:border-box"></textarea>
+    <div class="modal-btns">
+      <button class="cancel" id="s_cancel">Отмена</button>
+      <button class="ok" id="s_save">Сохранить</button>
+    </div>
+  </div>
+</div>
+
+<!-- МОДАЛКА: WLC -->
+<div class="modal-mask" id="wlcModal">
+  <div class="modal" style="width:520px;max-height:85vh;overflow-y:auto">
+    <h2>🎛 Контроллер беспроводной сети</h2>
+    <div id="wlcBody">Загрузка...</div>
+    <div class="modal-btns">
+      <button class="cancel" id="wlcClose">Закрыть</button>
+    </div>
+  </div>
+</div>
+
+<!-- МОДАЛКА: Коммутатор -->
+<div class="modal-mask" id="switchModal">
+  <div class="modal" style="width:460px;max-height:85vh;overflow-y:auto">
+    <h2>Новый PoE-коммутатор</h2>
+    <label>Имя</label>
+    <input type="text" id="sw_name" placeholder="SW-01">
+    <label>Модель</label>
+    <input type="text" id="sw_model" placeholder="Cisco Catalyst 2960X">
+    <label>Расположение</label>
+    <input type="text" id="sw_loc" placeholder="Серверная">
+    <label>PoE-бюджет, Вт</label>
+    <input type="number" id="sw_budget" value="370">
+    <label>Всего портов</label>
+    <input type="number" id="sw_ports" value="24">
+    <label>PoE-портов</label>
+    <input type="number" id="sw_poe" value="24">
+    <div class="modal-btns">
+      <button class="cancel" id="sw_cancel">Отмена</button>
+      <button class="ok" id="sw_save">Сохранить</button>
+    </div>
+  </div>
+</div>
+
+<!-- МОДАЛКА: Результат инфраструктуры -->
+<div class="modal-mask" id="infraResultModal">
+  <div class="modal" style="width:620px;max-height:80vh;overflow-y:auto">
+    <h2 id="infraResultTitle"></h2>
+    <div id="infraResultBody"></div>
+    <div class="modal-btns">
+      <button class="cancel" id="infraResultClose">Закрыть</button>
+    </div>
+  </div>
+</div>
+
+<!-- МОДАЛКА: Оптимизация -->
+<div class="modal-mask" id="optimizeModal">
+  <div class="modal" style="width:520px;max-height:85vh;overflow-y:auto">
+    <h2>🎯 Оптимизация размещения точек доступа</h2>
+    <label>Целевое покрытие, %</label>
+    <input type="number" id="opt_coverage" value="95" min="50" max="100">
+    <label>Целевой RSSI, дБм</label>
+    <input type="number" id="opt_rssi" value="-70" min="-90" max="-40">
+    <label>Мощность AP, дБм</label>
+    <input type="number" id="opt_power" value="20" min="1" max="30">
+    <label>Диапазон</label>
+    <select id="opt_band">
+      <option value="2.4">2.4 ГГц</option>
+      <option value="5" selected>5 ГГц</option>
+      <option value="6">6 ГГц</option>
+    </select>
+    <div class="modal-btns">
+      <button class="cancel" id="opt_cancel">Отмена</button>
+      <button class="ok" id="opt_run">Рассчитать</button>
+    </div>
+    <div id="opt_result" style="margin-top:14px"></div>
+  </div>
+</div>
+
+<script src="/static/js/api.js"></script>
+<!-- Скрытый селект материала стены — используется из JS -->
+<select id="wallMaterial" style="display:none">
+  <option value="concrete" selected>Бетон</option>
+  <option value="brick">Кирпич</option>
+  <option value="drywall">Гипсокартон</option>
+  <option value="wood">Дерево</option>
+  <option value="glass">Стекло</option>
+</select>
+<!-- Скрытый селект материала для фигур -->
+<select id="shapeMaterial" style="display:none">
+  <option value="concrete">Бетон</option>
+  <option value="brick" selected>Кирпич</option>
+  <option value="drywall">Гипсокартон</option>
+  <option value="wood">Дерево</option>
+  <option value="glass">Стекло</option>
+</select>
+<script src="/static/js/icons.js"></script>
+<script src="/static/js/report.js"></script>
+<script src="/static/js/editor.js"></script>
 </body>
 </html>

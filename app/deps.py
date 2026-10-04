@@ -1,4 +1,4 @@
-"""Зависимости FastAPI: текущий пользователь, проверка ролей."""
+"""Зависимости FastAPI."""
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
@@ -20,14 +20,20 @@ def get_current_user(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Недействительный токен",
         )
-    user = db.query(User).filter(User.id == payload.get("sub")).first()
+    sub = payload.get("sub")
+    if sub is None:
+        raise HTTPException(status_code=401, detail="Некорректный токен")
+    try:
+        user_id = int(sub)
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=401, detail="Некорректный токен")
+    user = db.query(User).filter(User.id == user_id).first()
     if not user or not user.is_active:
         raise HTTPException(status_code=401, detail="Пользователь не найден")
     return user
 
 
 def require_role(*roles: str):
-    """Фабрика зависимостей: require_role('admin', 'engineer')."""
     def checker(user: User = Depends(get_current_user)) -> User:
         if user.role not in roles:
             raise HTTPException(status_code=403, detail="Недостаточно прав")

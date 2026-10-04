@@ -2,35 +2,143 @@
 <html lang="ru">
 <head>
 <meta charset="UTF-8">
-<title>Админ-панель</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Админ-панель — CoworkWiFi Planner</title>
 <link rel="stylesheet" href="/static/css/style.css">
 </head>
-<body>
+<body class="admin-page">
 <header class="topbar">
   <div class="logo">📡 CoworkWiFi Planner</div>
   <nav>
     <a href="/static/index.html">Главная</a>
     <a href="/static/editor.html">Редактор</a>
     <a href="/static/measurements.html">Измерения</a>
-    <a href="/static/heatmap.html">Тепловые карты</a>
-    <a href="/static/admin.html" class="active" id="adminLink" style="display:none">Админ</a>
+    <a href="/static/admin.html" class="active">Админ</a>
   </nav>
-  <div class="user-info"><span id="userName"></span></div>
+  <div class="user-info">
+    <span id="userName"></span>
+    <button id="logoutBtn" class="btn">Выйти</button>
+  </div>
 </header>
-<main class="container">
+
+<main class="container" style="max-width:1300px">
   <h1>Панель администратора</h1>
 
-  <section>
-    <h2>Пользователи</h2>
-    <table class="table" id="usersTable">
-      <thead>
-        <tr><th>ID</th><th>ФИО</th><th>Email</th><th>Роль</th><th>Активен</th><th></th></tr>
-      </thead>
-      <tbody></tbody>
-    </table>
+  <div class="tabs">
+    <button class="tab active" data-tab="dashboard">📊 Обзор</button>
+    <button class="tab" data-tab="users">👥 Пользователи</button>
+    <button class="tab" data-tab="projects">📁 Проекты</button>
+    <button class="tab" data-tab="audit">📜 Журнал действий</button>
+  </div>
+
+  <!-- ОБЗОР -->
+  <section id="tab-dashboard">
+    <div class="metric-grid" id="metricGrid"></div>
+    <div class="chart-row">
+      <div class="chart-box">
+        <h3>Регистрации за 7 дней</h3>
+        <div class="bar-chart" id="regChart"></div>
+      </div>
+      <div class="chart-box">
+        <h3>Проекты за 7 дней</h3>
+        <div class="bar-chart" id="projChart"></div>
+      </div>
+    </div>
+    <div class="chart-row">
+      <div class="chart-box">
+        <h3>Распределение по ролям</h3>
+        <div id="roleChart"></div>
+      </div>
+      <div class="chart-box">
+        <h3>Содержимое проектов</h3>
+        <div id="contentChart"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ПОЛЬЗОВАТЕЛИ -->
+  <section id="tab-users" style="display:none">
+    <div class="toolbar">
+      <h2>Пользователи</h2>
+      <button class="btn-primary-sm" id="addUserBtn">➕ Добавить пользователя</button>
+    </div>
+    <div class="table-wrap">
+      <table class="table" id="usersTable">
+        <thead>
+          <tr>
+            <th>ID</th><th>ФИО</th><th>Email</th><th>Роль</th>
+            <th>Статус</th><th>Зарегистрирован</th><th>Последний вход</th>
+            <th>Действия</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ПРОЕКТЫ -->
+  <section id="tab-projects" style="display:none">
+    <div class="toolbar">
+      <h2>Все проекты</h2>
+    </div>
+    <div class="table-wrap">
+      <table class="table" id="projectsTable">
+        <thead>
+          <tr>
+            <th>ID</th><th>Название</th><th>Владелец</th><th>Размер</th>
+            <th>Элементов</th><th>Устройств</th><th>AP</th><th>Создан</th><th></th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ЖУРНАЛ -->
+  <section id="tab-audit" style="display:none">
+    <div class="toolbar">
+      <h2>Журнал действий</h2>
+      <button class="btn-sm" id="refreshAudit">🔄 Обновить</button>
+    </div>
+    <div class="table-wrap">
+      <table class="table" id="auditTable">
+        <thead>
+          <tr>
+            <th>Время</th><th>Пользователь</th><th>Действие</th>
+            <th>Сущность</th><th>ID</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
   </section>
 </main>
+
+<!-- МОДАЛКА добавления пользователя -->
+<div class="modal-mask" id="userModal">
+  <div class="modal">
+    <h2>Новый пользователь</h2>
+    <label>ФИО</label>
+    <input type="text" id="nuName" placeholder="Иван Иванов">
+    <label>Email</label>
+    <input type="email" id="nuEmail" placeholder="user@example.com">
+    <label>Пароль</label>
+    <input type="password" id="nuPassword" placeholder="минимум 6 символов">
+    <label>Роль</label>
+    <select id="nuRole">
+      <option value="analyst">Аналитик</option>
+      <option value="engineer">Инженер</option>
+      <option value="admin">Администратор</option>
+    </select>
+    <div class="modal-btns">
+      <button class="cancel" id="nuCancel">Отмена</button>
+      <button class="ok" id="nuCreate">Создать</button>
+    </div>
+  </div>
+</div>
+
 <script src="/static/js/api.js"></script>
+<script src="/static/js/report.js"></script>
 <script src="/static/js/admin.js"></script>
 </body>
 </html>

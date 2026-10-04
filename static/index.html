@@ -2,84 +2,192 @@
 <html lang="ru">
 <head>
 <meta charset="UTF-8">
-<title>CoworkWiFi Planner</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CoworkWiFi Planner — проектирование Wi-Fi в коворкинге</title>
 <link rel="stylesheet" href="/static/css/style.css">
 </head>
 <body>
-<header class="topbar">
-  <div class="logo">📡 CoworkWiFi Planner</div>
-  <nav>
-    <a href="/static/index.html" class="active">Главная</a>
-    <a href="/static/editor.html">Редактор</a>
-    <a href="/static/measurements.html">Измерения</a>
-    <a href="/static/heatmap.html">Тепловые карты</a>
-    <a href="/static/admin.html" id="adminLink" style="display:none">Админ</a>
-  </nav>
-  <div class="user-info">
-    <span id="userName"></span>
-    <button id="logoutBtn" class="btn">Выйти</button>
+
+<section class="hero">
+  <div class="hero-logo">📡</div>
+  <h1>CoworkWiFi Planner</h1>
+  <p class="subtitle">
+    Инструмент для проектирования и визуализации зоны покрытия Wi-Fi
+    в коворкинге. Рисуйте стены, расставляйте точки доступа и устройства —
+    и сразу видьте результат.
+  </p>
+  <a href="/static/editor.html" class="hero-cta" id="startBtn">
+    Приступить к созданию
+    <span class="arrow">→</span>
+  </a>
+  <div class="hero-features-mini">
+    <span>🗺 Редактор плана</span>
+    <span>📡 Расчёт покрытия</span>
+    <span>📊 Тепловые карты</span>
+    <span>🔐 Роли и доступ</span>
   </div>
-</header>
+</section>
 
-<main class="container">
-  <section class="hero">
-    <h1>Программа проверки зоны покрытия Wi-Fi в коворкинге</h1>
-    <p>Загрузите план помещения, расставьте точки доступа, введите измерения RSSI/SNR — и получите тепловую карту покрытия.</p>
-    <div class="hero-actions">
-      <a href="/static/editor.html" class="btn-primary">Открыть редактор</a>
-      <a href="/docs" class="btn" target="_blank">API-документация</a>
-    </div>
-  </section>
-
-  <section class="features">
+<section class="section">
+  <h2 class="section-title">Что умеет сайт</h2>
+  <p class="section-sub">
+    Полный цикл проектирования беспроводной сети коворкинга —
+    от рисования стен до визуализации зоны радиопокрытия.
+  </p>
+  <div class="features-grid">
     <div class="feature">
       <div class="feature-icon">🗺</div>
-      <h3>Загрузка плана</h3>
-      <p>PNG, JPG или SVG с реальными размерами помещения</p>
+      <h3>Создание плана помещения</h3>
+      <p>Рисуйте стены с выбором материала — бетон, кирпич, дерево, стекло,
+      гипсокартон. Добавляйте двери, окна и комнаты.</p>
+    </div>
+    <div class="feature">
+      <div class="feature-icon">🪑</div>
+      <h3>Мебель и устройства</h3>
+      <p>Расставляйте диваны, столы, стулья, растения. Размещайте ПК,
+      ноутбуки, принтеры, камеры и IoT-датчики.</p>
     </div>
     <div class="feature">
       <div class="feature-icon">📡</div>
-      <h3>Расстановка точек доступа</h3>
-      <p>Укажите модель, мощность, канал и тип SSID</p>
+      <h3>Точки доступа</h3>
+      <p>Из каталога реальных моделей Cisco, Ubiquiti, TP-Link, MikroTik,
+      Huawei, Eltex. Настройка мощности, частоты, канала, SSID.</p>
+    </div>
+    <div class="feature">
+      <div class="feature-icon">🌊</div>
+      <h3>Зона покрытия</h3>
+      <p>Динамическая визуализация зоны радиопокрытия с учётом затухания
+      сигнала от стен и мощности точки доступа.</p>
     </div>
     <div class="feature">
       <div class="feature-icon">📊</div>
-      <h3>Измерения</h3>
-      <p>RSSI, SNR, интерференция — вручную или автоматически</p>
+      <h3>Тепловые карты</h3>
+      <p>RSSI, SNR, интерференция. Выявление «мёртвых зон» и оптимизация
+      размещения точек доступа.</p>
     </div>
     <div class="feature">
-      <div class="feature-icon">🔥</div>
-      <h3>Тепловые карты</h3>
-      <p>IDW-интерполяция и наложение на план помещения</p>
+      <div class="feature-icon">🎯</div>
+      <h3>Автооптимизация</h3>
+      <p>Автоматический подбор количества и мест размещения точек
+      доступа для целевого покрытия.</p>
+    </div>
+    <div class="feature">
+      <div class="feature-icon">🔐</div>
+      <h3>Роли и права</h3>
+      <p>Администратор, инженер, аналитик — разграничение доступа
+      и защита данных.</p>
     </div>
     <div class="feature">
       <div class="feature-icon">📄</div>
       <h3>Экспорт отчётов</h3>
-      <p>CSV и PDF с результатами измерений</p>
+      <p>PDF, CSV, XLSX. Спецификация оборудования, статистика покрытия,
+      анализ каналов.</p>
     </div>
-    <div class="feature">
-      <div class="feature-icon">🔐</div>
-      <h3>Роли и доступ</h3>
-      <p>Администратор, инженер, аналитик</p>
+  </div>
+</section>
+
+<section class="steps">
+  <div class="section">
+    <h2 class="section-title">Как это работает</h2>
+    <p class="section-sub">Четыре шага — от пустого холста до готового проекта сети.</p>
+    <div class="step-row">
+      <div class="step">
+        <div class="step-num">1</div>
+        <h4>Создайте проект</h4>
+        <p>Укажите название и размеры помещения в метрах.</p>
+      </div>
+      <div class="step">
+        <div class="step-num">2</div>
+        <h4>Нарисуйте план</h4>
+        <p>Стены, двери, окна, мебель. Всё кликом мыши.</p>
+      </div>
+      <div class="step">
+        <div class="step-num">3</div>
+        <h4>Разместите сеть</h4>
+        <p>Точки доступа и клиентские устройства на плане.</p>
+      </div>
+      <div class="step">
+        <div class="step-num">4</div>
+        <h4>Оцените покрытие</h4>
+        <p>Тепловая карта и отчёт с рекомендациями.</p>
+      </div>
     </div>
-  </section>
-</main>
+  </div>
+</section>
+
+<section class="about">
+  <div class="section">
+    <h2 class="section-title">О проекте</h2>
+    <p class="section-sub">
+      Сайт разработан в рамках курсового проекта по профессиональному
+      модулю ПМ.06 «Сопровождение информационных систем».
+    </p>
+    <div class="about-card">
+      <div class="uni">Колледж современных технологий им. М.Ф. Панова</div>
+      <h2>План внедрения беспроводной сети офиса
+        и программа проверки зоны покрытия в коворкинге</h2>
+      <p>
+        Цель проекта — создание инструмента для объективной оценки
+        и визуализации зоны покрытия Wi-Fi в помещениях коворкинга
+        с учётом архитектурных особенностей и требований к нагрузке.
+      </p>
+      <p>
+        Программа обеспечивает измерение уровня сигнала (RSSI), отношения
+        сигнал/шум (SNR), определение интерференции, построение тепловых
+        карт и их наложение на план помещения.
+      </p>
+      <div class="about-divider"></div>
+      <p style="font-size:13px;color:#999;margin:0">
+        Специальность: <strong>09.02.07</strong> — Информационные системы и программирование
+      </p>
+      <div class="author-info">
+        <div class="author-item">
+          <div class="lbl">Студент</div>
+          <div class="val">Скрыпкин М. Ю.</div>
+        </div>
+        <div class="author-item">
+          <div class="lbl">Группа</div>
+          <div class="val">СИП-323/24</div>
+        </div>
+        <div class="author-item">
+          <div class="lbl">Учебный год</div>
+          <div class="val">2026 — 2027</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <p>📡 <strong>CoworkWiFi Planner</strong> — курсовой проект 2026–2027</p>
+  <p>Скрыпкин М. Ю. · группа СИП-323/24 ·
+    <a href="/docs" target="_blank">API-документация</a></p>
+</footer>
 
 <script src="/static/js/api.js"></script>
 <script>
 (function () {
-  if (!API.getToken()) { window.location.href = '/static/login.html'; return; }
-  API.get('/api/auth/me').then(function (u) {
-    document.getElementById('userName').textContent = u.full_name + ' (' + u.role + ')';
-    if (u.role === 'admin') document.getElementById('adminLink').style.display = '';
-  }).catch(function () {
-    API.clearToken();
-    window.location.href = '/static/login.html';
+  var startBtn = document.getElementById('startBtn');
+  startBtn.addEventListener('click', function (e) {
+    if (!API.getToken()) {
+      e.preventDefault();
+      window.location.href = '/static/login.html';
+    }
   });
-  document.getElementById('logoutBtn').addEventListener('click', function () {
-    API.clearToken();
-    window.location.href = '/static/login.html';
-  });
+  if (API.getToken()) {
+    API.get('/api/auth/me').then(function (u) {
+      var hero = document.querySelector('.hero');
+      var badge = document.createElement('div');
+      badge.className = 'hero-user-badge';
+      badge.innerHTML = '<span>👤 ' + u.full_name + '</span>' +
+        '<button id="logoutLink">Выйти</button>';
+      hero.appendChild(badge);
+      document.getElementById('logoutLink').addEventListener('click', function () {
+        API.clearToken();
+        window.location.reload();
+      });
+    }).catch(function () { API.clearToken(); });
+  }
 })();
 </script>
 </body>

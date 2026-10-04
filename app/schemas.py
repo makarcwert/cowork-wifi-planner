@@ -1,6 +1,6 @@
 """Pydantic-схемы."""
 from datetime import datetime
-from typing import Optional, List
+from typing import Optional
 from pydantic import BaseModel, EmailStr, Field
 
 
@@ -19,14 +19,10 @@ class UserOut(BaseModel):
     role: str
     is_active: bool
     created_at: datetime
+    last_login: Optional[datetime] = None
 
     class Config:
         from_attributes = True
-
-
-class UserLogin(BaseModel):
-    email: EmailStr
-    password: str
 
 
 class TokenOut(BaseModel):
@@ -118,3 +114,101 @@ class AccessPointOut(AccessPointCreate):
 
     class Config:
         from_attributes = True
+
+
+# ---------- Измерения ----------
+class MeasurementCreate(BaseModel):
+    name: Optional[str] = None
+    x: float
+    y: float
+    rssi: float = -65.0
+    snr: Optional[float] = None
+    interference: Optional[float] = None
+    mode: str = "manual"
+
+
+class MeasurementOut(MeasurementCreate):
+    id: int
+    project_id: int
+    measured_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+# ---------- SSID-профили ----------
+class SSIDProfileCreate(BaseModel):
+    name: str
+    type: str = "corporate"
+    auth_method: str = "RADIUS"
+    encryption: str = "WPA2-Enterprise"
+    vlan_id: Optional[int] = None
+    client_isolation: bool = False
+    access_to_internal: bool = False
+    access_to_internet: bool = True
+    captive_portal: bool = False
+    bandwidth_limit_mbps: Optional[float] = None
+    description: Optional[str] = None
+
+
+class SSIDProfileOut(SSIDProfileCreate):
+    id: int
+    project_id: int
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+# ---------- WLC ----------
+class WLCCreate(BaseModel):
+    name: str = "WLC-01"
+    model: Optional[str] = None
+    ip_address: Optional[str] = None
+    location: Optional[str] = None
+    load_balancing: bool = True
+    band_steering: bool = True
+    fast_roaming_802_11r: bool = True
+    roaming_802_11k: bool = True
+    roaming_802_11v: bool = True
+    auto_channel: bool = True
+    auto_power: bool = True
+    nms_enabled: bool = True
+    nms_poll_interval_sec: int = 60
+    firmware_auto_update: bool = False
+    description: Optional[str] = None
+
+
+class WLCOut(WLCCreate):
+    id: int
+    project_id: int
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+# ---------- PoE-коммутаторы ----------
+class PoESwitchCreate(BaseModel):
+    name: str
+    model: Optional[str] = None
+    x: Optional[float] = None
+    y: Optional[float] = None
+    total_power_budget_w: float = 370.0
+    total_ports: int = 24
+    poe_ports: int = 24
+    location: Optional[str] = None
+
+
+class PoESwitchOut(PoESwitchCreate):
+    id: int
+    project_id: int
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+# ---------- Запрос тепловой карты ----------
+class HeatmapRequest(BaseModel):
+    grid_size_m: float = 0.5
