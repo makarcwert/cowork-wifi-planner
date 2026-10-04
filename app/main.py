@@ -1,4 +1,4 @@
-"""Точка входа FastAPI."""
+"""Точка входа FastAPI (без авторизации)."""
 import os
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
@@ -13,7 +13,7 @@ from .routes import (auth, users, projects, admin, measurements,
 Base.metadata.create_all(bind=engine)
 os.makedirs("uploads", exist_ok=True)
 
-app = FastAPI(title="CoworkWiFi Planner API", version="2.0.0")
+app = FastAPI(title="CoworkWiFi Planner API", version="2.1.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -39,7 +39,7 @@ app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 
 @app.get("/", include_in_schema=False)
 def root():
-    return RedirectResponse(url="/static/login.html")
+    return RedirectResponse(url="/static/index.html")
 
 
 @app.get("/health", include_in_schema=False)

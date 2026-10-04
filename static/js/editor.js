@@ -1,2677 +1,3228 @@
-/* Редактор плана CoworkWiFi Planner.
-   Возможности: палитра с SVG-иконками, drag-and-drop, магнитная сетка 0.5 м,
-   undo/redo, копирование, поворот, множественное выделение, resize-маркеры,
-   фигуры (прямоугольник/эллипс/треугольник) с материалом,
-   обрезка покрытия стенами, связи устройств с коммутаторами. */
+/* ============================================================
+   CoworkWiFi Planner — редактор зоны покрытия
+   Часть 1: состояние, физика, рендер
+   ============================================================ */
 (function () {
-  // ==================== СОСТОЯНИЕ ====================
-  var project = null;
-  var tool = 'select';
-  var selected = null;
-  var multiSelected = [];
-  var elements = [];
-  var devices = [];
-  var aps = [];
-  var switches = [];
-  var cableLinks = [];
-  var deviceLinks = [];
+  'use strict';
 
-  var draft = null;
-  var roomPoints = [];
-  var drag = null;
-  var resize = null;
-  var zoom = 1;
-  var snapEnabled = true;
-  var SNAP_M = 0.5;
+  /* ============================================================
+     КОНСТАНТЫ
+     ============================================================ */
 
-  var history = [];
-  var redoStack = [];
-  var clipboard = null;
+  const PX_PER_M = 40;          // пикселей на метр
+  const SNAP_M = 0.5;           // шаг сетки в метрах
+  const CABLE_LIMIT_M = 100;    // максимальная длина кабеля
+  const CABLE_COEF = 1.1;       // коэффициент запаса кабеля
+  const POE = { '2.4': 12.5, '5': 15.5, '6': 18.0 };
 
-  var selectionRect = null;
-
-  var ssidProfiles = [];
-  var editingSsidId = null;
-  var currentWlc = null;
-  var optimizationResult = null;
-  var lastHeatmapMode = 'rssi';
-
-  // ==================== SVG-СЛОИ ====================
-  var svg = document.getElementById('planSvg');
-  var layerCoverage = document.getElementById('layerCoverage');
-  var layerDeviceLinks = document.getElementById('layerDeviceLinks');
-  var layerCables = document.getElementById('layerCables');
-  var layerRooms = document.getElementById('layerRooms');
-  var layerWalls = document.getElementById('layerWalls');
-  var layerFurniture = document.getElementById('layerFurniture');
-  var layerText = document.getElementById('layerText');
-  var layerDevices = document.getElementById('layerDevices');
-  var layerSwitches = document.getElementById('layerSwitches');
-  var layerAps = document.getElementById('layerAps');
-  var layerDraft = document.getElementById('layerDraft');
-  var layerSelection = document.getElementById('layerSelection');
-
-  var projectSelect = document.getElementById('projectSelect');
-  var propsPanel = document.getElementById('propsPanel');
-  var canvasHint = document.getElementById('canvasHint');
-  var heatmapCanvas = document.getElementById('heatmapCanvas');
-  var canvasWrap = document.getElementById('canvasWrap');
-  var selectionRectEl = document.getElementById('selectionRect');
-  var snapIndicator = document.getElementById('snapIndicator');
-
-  var PX_PER_M = 40;
-
-  var WALL_COLORS = {
-    concrete: '#6b6b7b', brick: '#c0392b', drywall: '#d4d4dc',
-    wood: '#8b5a2b', glass: '#87ceeb'
+  const MATERIALS = {
+    brick:    { name: 'Кирпич',      loss: 15, pattern: 'pat-brick',    width: 7 },
+    concrete: { name: 'Бетон',       loss: 25, pattern: 'pat-concrete', width: 8 },
+    drywall:  { name: 'Гипсокартон', loss: 4,  pattern: 'pat-drywall',  width: 3 },
+    wood:     { name: 'Дерево',      loss: 6,  pattern: 'pat-wood',     width: 6 },
+    glass:    { name: 'Стекло',      loss: 3,  pattern: 'pat-glass',    width: 5 }
   };
-  var WALL_WIDTHS = { concrete: 8, brick: 7, drywall: 3, wood: 6, glass: 4 };
 
-  // ==================== АВТОРИЗАЦИЯ ====================
-  API.get('/api/auth/me').then(function (u) {
-    document.getElementById('userName').textContent = u.full_name;
-    if (u.role === 'admin') document.getElementById('adminLink').style.display = '';
-    if (u.role === 'admin' || u.role === 'analyst') {
-      var pdfBlock = document.getElementById('pdfAdminBlock');
-      if (pdfBlock) pdfBlock.style.display = '';
-    }
-    loadProjects();
-  }).catch(function () {
-    window.location.href = '/static/login.html';
-  });
+  const PALETTE = [
+    { name: 'Сеть', items: [
+      { key: 'ap', label: 'AP', icon: 'ap' },
+      { key: 'switch', label: 'SW', icon: 'switch' },
+      { key: 'router', label: 'Роутер', icon: 'router' },
+      { key: 'wlc', label: 'WLC', icon: 'wlc' },
+      { key: 'patch', label: 'Патч', icon: 'patch' }
+    ]},
+    { name: 'Стены', items: [
+      { key: 'wall', material: 'brick',    label: 'Кирпич', icon: 'wall_brick' },
+      { key: 'wall', material: 'wood',     label: 'Дерево', icon: 'wall_wood' },
+      { key: 'wall', material: 'glass',    label: 'Стекло', icon: 'wall_glass' },
+      { key: 'wall', material: 'drywall',  label: 'ГКЛ',    icon: 'wall_drywall' },
+      { key: 'wall', material: 'concrete', label: 'Бетон',  icon: 'wall_concrete' }
+    ]},
+    { name: 'Мебель', items: [
+      { key: 'table', label: 'Стол', icon: 'table' },
+      { key: 'chair', label: 'Стул', icon: 'chair' },
+      { key: 'sofa', label: 'Диван', icon: 'sofa' },
+      { key: 'plant', label: 'Растение', icon: 'plant' }
+    ]},
+    { name: 'Техника', items: [
+      { key: 'pc', label: 'ПК', icon: 'pc' },
+      { key: 'laptop', label: 'Ноутбук', icon: 'laptop' },
+      { key: 'printer', label: 'МФУ', icon: 'printer' },
+      { key: 'scanner', label: 'Сканер', icon: 'scanner' },
+      { key: 'camera', label: 'Камера', icon: 'camera' }
+    ]},
+    { name: 'IoT', items: [
+      { key: 'light', label: 'Свет', icon: 'light', iot: true },
+      { key: 'sensor', label: 'Датчик', icon: 'sensor', iot: true },
+      { key: 'lock', label: 'Замок', icon: 'lock', iot: true },
+      { key: 'doorphone', label: 'Домофон', icon: 'doorphone', iot: true },
+      { key: 'ac', label: 'Кондиц.', icon: 'ac', iot: true }
+    ]}
+  ];
 
-  document.getElementById('logoutBtn').addEventListener('click', function () {
-    API.clearToken();
-    window.location.href = '/static/login.html';
-  });
+  const DEV_ICON = {
+    pc: 'pc', laptop: 'laptop', printer: 'printer',
+    scanner: 'scanner', camera: 'camera', router: 'router',
+    patch: 'patch', wlc: 'wlc'
+  };
 
-  // ==================== УТИЛИТЫ ====================
+  const IOT_ICON = {
+    light: 'light', sensor: 'sensor', lock: 'lock',
+    doorphone: 'doorphone', ac: 'ac'
+  };
+
+  const WIRELESS_TYPES = [
+    'pc', 'laptop', 'printer', 'scanner', 'camera',
+    'light', 'sensor', 'lock', 'doorphone', 'ac'
+  ];
+
+  const DEVICE_NAMES = {
+    pc: 'PC-', laptop: 'LT-', printer: 'MFP-', scanner: 'SC-',
+    camera: 'CAM-', router: 'RT-', patch: 'PP-', wlc: 'WLC-'
+  };
+
+  const IOT_NAMES = {
+    light: 'LT-', sensor: 'TH-', lock: 'LK-', doorphone: 'DF-', ac: 'AC-'
+  };
+
+  const FURNITURE_TYPES = ['table', 'chair', 'sofa', 'plant'];
+
+  /* ============================================================
+     СОСТОЯНИЕ
+     ============================================================ */
+
+  const state = {
+    // Серверный проект
+    projectId: null,
+    project: null,
+
+    // Локальные коллекции (синхронизируются с БД)
+    elements: [],
+    aps: [],
+    switches: [],
+    devices: [],
+
+    // UI
+    selected: null,
+    multiSelected: [],
+    tool: 'select',
+    wallMaterial: 'concrete',
+    draft: null,
+    roomPoints: [],
+    drag: null,
+    zoom: 1,
+    snap: true,
+    history: [],
+    redoStack: [],
+    clipboard: null,
+    heatmap: null,
+    heatmapMode: 'rssi',
+    lastMousePos: null,
+
+    // Счётчики для автоименования
+    idSeq: 1,
+    apCnt: 0,
+    swCnt: 0,
+    devCnt: 0,
+
+    // Флаг: идёт ли сейчас загрузка с сервера (чтобы не сохранять в процессе)
+    loading: false
+  };
+
+  const nextId = () => state.idSeq++;
+
+  /* ============================================================
+     ССЫЛКИ НА DOM-ЭЛЕМЕНТЫ
+     ============================================================ */
+
+  const svg             = document.getElementById('planSvg');
+  const wrap            = document.getElementById('canvasWrap');
+  const heatmapCanvas   = document.getElementById('heatmapCanvas');
+  const selectionRectEl = document.getElementById('selectionRect');
+  const snapIndicator   = document.getElementById('snapIndicator');
+  const propsPanel      = document.getElementById('propsPanel');
+  const canvasHint      = document.getElementById('canvasHint');
+  const paletteGroups   = document.getElementById('paletteGroups');
+
+  const L = {};
+  [
+    'layerGrid', 'layerCoverage', 'layerCables', 'layerRooms', 'layerWalls',
+    'layerFurniture', 'layerText', 'layerDevices', 'layerIoT', 'layerSwitches',
+    'layerAps', 'layerDraft', 'layerSelection'
+  ].forEach(id => L[id] = document.getElementById(id));
+
+  /* ============================================================
+     ТЕМА
+     ============================================================ */
+
+  (function initTheme() {
+    const saved = localStorage.getItem('cw_theme') || 'dark';
+    document.documentElement.setAttribute('data-theme', saved);
+    const btn = document.getElementById('themeToggle');
+    if (!btn) return;
+    btn.textContent = saved === 'dark' ? '☀' : '🌙';
+    btn.addEventListener('click', () => {
+      const next = document.documentElement.getAttribute('data-theme') === 'dark'
+        ? 'light' : 'dark';
+      document.documentElement.setAttribute('data-theme', next);
+      localStorage.setItem('cw_theme', next);
+      btn.textContent = next === 'dark' ? '☀' : '🌙';
+      // Перерисовать тепловую карту, если она активна
+      if (state.heatmap) drawHeatmap();
+    });
+  })();
+
+  /* ============================================================
+     УТИЛИТЫ
+     ============================================================ */
+
+  function esc(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;')
+      .replace(/"/g, '&quot;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+  }
+
   function snap(v) {
-    if (!snapEnabled) return +v.toFixed(2);
+    if (!state.snap) return +v.toFixed(2);
     return Math.round(v / SNAP_M) * SNAP_M;
   }
 
-  function updateSnapBadge() {
-    var st = document.getElementById('snapStatus');
-    var btn = document.getElementById('toggleSnap');
-    if (!st || !btn) return;
-    if (snapEnabled) {
-      st.className = 'snap-on';
-      st.textContent = '0.5 м';
-      btn.textContent = 'Выкл. сетку';
-    } else {
-      st.className = 'snap-off';
-      st.textContent = 'выкл';
-      btn.textContent = 'Вкл. сетку';
-    }
+  function m2px(mx, my) {
+    return { x: mx * PX_PER_M, y: my * PX_PER_M };
   }
 
-  var toggleSnapBtn = document.getElementById('toggleSnap');
-  if (toggleSnapBtn) {
-    toggleSnapBtn.addEventListener('click', function () {
-      snapEnabled = !snapEnabled;
-      updateSnapBadge();
-    });
+  /* С учётом preserveAspectRatio="xMidYMid meet" */
+  function svgMetrics() {
+    const r = svg.getBoundingClientRect();
+    const vb = (svg.getAttribute('viewBox') || '0 0 100 100')
+      .split(/[\s,]+/).map(Number);
+    const vx = vb[0] || 0, vy = vb[1] || 0;
+    const vw = vb[2] || 1, vh = vb[3] || 1;
+    const scale = Math.min(r.width / vw, r.height / vh);
+    const offsetX = (r.width  - vw * scale) / 2;
+    const offsetY = (r.height - vh * scale) / 2;
+    return { r, vx, vy, vw, vh, scale, offsetX, offsetY };
   }
 
-  function flashSnapIndicator(mx, my) {
-    if (!snapIndicator || !snapEnabled) return;
-    var p = m2px(snap(mx), snap(my));
-    var size = SNAP_M * PX_PER_M;
-    snapIndicator.style.left = (p.x - size / 2) + 'px';
-    snapIndicator.style.top = (p.y - size / 2) + 'px';
-    snapIndicator.style.width = size + 'px';
+  function eventToM(e) {
+    const m = svgMetrics();
+    const px = (e.clientX - m.r.left - m.offsetX) / m.scale + m.vx;
+    const py = (e.clientY - m.r.top  - m.offsetY) / m.scale + m.vy;
+    return { px, py, m: { x: px / PX_PER_M, y: py / PX_PER_M } };
+  }
+
+  function clientToM(sx, sy) {
+    const m = svgMetrics();
+    return {
+      x: ((sx - m.offsetX) / m.scale + m.vx) / PX_PER_M,
+      y: ((sy - m.offsetY) / m.scale + m.vy) / PX_PER_M
+    };
+  }
+
+  function flashSnap(mx, my) {
+    if (!state.snap || !snapIndicator) return;
+    const p = m2px(snap(mx), snap(my));
+    const size = SNAP_M * PX_PER_M;
+    snapIndicator.style.left   = (p.x - size / 2) + 'px';
+    snapIndicator.style.top    = (p.y - size / 2) + 'px';
+    snapIndicator.style.width  = size + 'px';
     snapIndicator.style.height = size + 'px';
     snapIndicator.style.display = 'block';
     clearTimeout(snapIndicator._t);
-    snapIndicator._t = setTimeout(function () {
+    snapIndicator._t = setTimeout(() => {
       snapIndicator.style.display = 'none';
     }, 400);
   }
 
-  // ==================== HISTORY ====================
-  function pushHistory(action) {
-    history.push({
-      action: action,
-      snapshot: {
-        elements: JSON.parse(JSON.stringify(elements)),
-        devices: JSON.parse(JSON.stringify(devices)),
-        aps: JSON.parse(JSON.stringify(aps)),
-        switches: JSON.parse(JSON.stringify(switches))
-      }
-    });
-    if (history.length > 50) history.shift();
-    redoStack = [];
-  }
+  /* ============================================================
+     API-ОБЁРТКИ (расширяют api.js для удобства)
+     ============================================================ */
 
-  function undo() {
-    if (!history.length) { canvasHint.textContent = 'Нечего отменять'; return; }
-    var last = history.pop();
-    redoStack.push(last);
-    applySnapshot(last.snapshot);
-    canvasHint.textContent = 'Отменено: ' + last.action;
-  }
+  const API_PROJECTS = '/api/projects';
 
-  function redo() {
-    if (!redoStack.length) { canvasHint.textContent = 'Нечего повторять'; return; }
-    var item = redoStack.pop();
-    history.push(item);
-    applySnapshot(item.snapshot);
-    canvasHint.textContent = 'Повторено: ' + item.action;
-  }
+  const Api = {
+    // ---- Проекты ----
+    listProjects: () => API.get(API_PROJECTS + '/'),
+    createProject: (data) => API.post(API_PROJECTS + '/', data),
+    getProject: (id) => API.get(API_PROJECTS + '/' + id),
+    updateProject: (id, data) => API.put(API_PROJECTS + '/' + id, data),
+    deleteProject: (id) => API.del(API_PROJECTS + '/' + id),
 
-  function applySnapshot(snap) {
-    elements = JSON.parse(JSON.stringify(snap.elements));
-    devices = JSON.parse(JSON.stringify(snap.devices));
-    aps = JSON.parse(JSON.stringify(snap.aps));
-    switches = JSON.parse(JSON.stringify(snap.switches));
-    buildCableLinks();
-    render();
-  }
+    // ---- Элементы ----
+    listElements: (pid) => API.get(API_PROJECTS + '/' + pid + '/elements'),
+    createElement: (pid, data) => API.post(API_PROJECTS + '/' + pid + '/elements', data),
+    updateElement: (eid, data) => API.put(API_PROJECTS + '/elements/' + eid, data),
+    deleteElement: (eid) => API.del(API_PROJECTS + '/elements/' + eid),
 
-  // ==================== ПРОЕКТЫ ====================
-  function loadProjects() {
-    API.get('/api/projects/').then(function (list) {
-      projectSelect.innerHTML = '<option value="">— Выберите —</option>';
-      list.forEach(function (p) {
-        var o = document.createElement('option');
-        o.value = p.id;
-        o.textContent = p.name + ' (' + p.width_m + '×' + p.height_m + ' м)';
-        projectSelect.appendChild(o);
-      });
-      if (list.length) {
-        projectSelect.value = list[0].id;
-        selectProject(list[0]);
-      }
-    });
-  }
+    // ---- AP ----
+    listAPs: (pid) => API.get(API_PROJECTS + '/' + pid + '/aps'),
+    createAP: (pid, data) => API.post(API_PROJECTS + '/' + pid + '/aps', data),
+    updateAP: (aid, data) => API.put(API_PROJECTS + '/aps/' + aid, data),
+    deleteAP: (aid) => API.del(API_PROJECTS + '/aps/' + aid),
 
-  projectSelect.addEventListener('change', function () {
-    if (!this.value) { project = null; render(); return; }
-    API.get('/api/projects/' + this.value).then(selectProject);
-  });
+    // ---- Устройства ----
+    listDevices: (pid) => API.get(API_PROJECTS + '/' + pid + '/devices'),
+    createDevice: (pid, data) => API.post(API_PROJECTS + '/' + pid + '/devices', data),
+    updateDevice: (did, data) => API.put(API_PROJECTS + '/devices/' + did, data),
+    deleteDevice: (did) => API.del(API_PROJECTS + '/devices/' + did),
 
-  function selectProject(p) {
-    project = p;
-    selected = null;
-    multiSelected = [];
-    draft = null;
-    roomPoints = [];
-    history = [];
-    redoStack = [];
-    zoom = 1;
-    document.getElementById('zoomLabel').textContent = '100%';
-    applyViewBox();
-    loadAll();
-    loadSsid();
-    canvasHint.textContent = p.name + ' — ' + p.width_m + '×' + p.height_m + ' м';
-  }
+    // ---- Коммутаторы ----
+    listSwitches: (pid) => API.get('/api/infra/' + pid + '/switches'),
+    createSwitch: (pid, data) => API.post('/api/infra/' + pid + '/switches', data),
+    updateSwitch: (sid, data) => API.put('/api/infra/switches/' + sid, data),
+    deleteSwitch: (sid) => API.del('/api/infra/switches/' + sid),
 
-  function applyViewBox() {
-    if (!project) return;
-    var W = project.width_m * PX_PER_M;
-    var H = project.height_m * PX_PER_M;
-    svg.setAttribute('viewBox', '0 0 ' + (W / zoom) + ' ' + (H / zoom));
-  }
+    // ---- Каталог AP ----
+    listApModels: () => API.get('/api/ap-models/')
+  };
 
-  // ==================== ЗАГРУЗКА ====================
-  function loadAll() {
-    if (!project) return;
-    Promise.all([
-      API.get('/api/projects/' + project.id + '/elements'),
-      API.get('/api/projects/' + project.id + '/devices'),
-      API.get('/api/projects/' + project.id + '/aps'),
-      API.get('/api/infra/' + project.id + '/switches'),
-      API.get('/api/infra/' + project.id + '/device-connections').catch(function () {
-        return { links: [] };
-      })
-    ]).then(function (r) {
-      elements = r[0] || [];
-      devices = r[1] || [];
-      aps = r[2] || [];
-      switches = r[3] || [];
-      deviceLinks = (r[4] && r[4].links) ? r[4].links : [];
-      buildCableLinks();
-      render();
-    }).catch(function (err) {
-      console.error('Ошибка загрузки:', err);
-      elements = []; devices = []; aps = []; switches = []; deviceLinks = [];
-      render();
-    });
-  }
+  /* ============================================================
+     ПАЛИТРА (построение DOM)
+     ============================================================ */
 
-  function buildCableLinks() {
-    cableLinks = [];
-    aps.forEach(function (ap) {
-      var bestSw = null, bestDist = Infinity;
-      switches.forEach(function (s) {
-        if (s.x == null || s.y == null) return;
-        var dx = ap.x - s.x, dy = ap.y - s.y;
-        var d = Math.sqrt(dx * dx + dy * dy);
-        if (d < bestDist) { bestDist = d; bestSw = s; }
-      });
-      if (bestSw) {
-        cableLinks.push({
-          from: { x: bestSw.x, y: bestSw.y, name: bestSw.name },
-          to: { x: ap.x, y: ap.y, name: ap.name },
-          length_m: +(bestDist * 1.1).toFixed(1)
+  function buildPalette() {
+    if (!paletteGroups) return;
+    paletteGroups.innerHTML = '';
+
+    PALETTE.forEach(cat => {
+      const sec = document.createElement('section');
+      sec.className = 'palette-category open';
+
+      const header = document.createElement('button');
+      header.className = 'palette-cat-header';
+      header.type = 'button';
+      header.innerHTML = '<span class="chev">▾</span> ' + cat.name;
+      sec.appendChild(header);
+
+      const grid = document.createElement('div');
+      grid.className = 'palette-grid';
+
+      cat.items.forEach(it => {
+        const el = document.createElement('div');
+        el.className = 'palette-item' + (it.iot ? ' iot' : '');
+        el.draggable = true;
+        el.dataset.key = it.key;
+        if (it.material) el.dataset.material = it.material;
+
+        el.innerHTML =
+          '<div>' + window.getEditorIcon(it.icon) + '</div>' +
+          '<span>' + it.label + '</span>';
+
+        // Клик — выбор инструмента (для стены) или размещение
+        el.addEventListener('click', () => {
+          if (it.key === 'wall') {
+            state.tool = 'wall';
+            state.wallMaterial = it.material;
+            setActiveTool('wall');
+            canvasHint.textContent =
+              'Стена: ' + MATERIALS[it.material].name +
+              '. Клик — начало, клик — конец';
+          } else {
+            const pos = state.lastMousePos || {
+              x: state.project ? state.project.width_m / 2 : 5,
+              y: state.project ? state.project.height_m / 2 : 5
+            };
+            placeObject(it.key, pos.x, pos.y);
+          }
         });
-      }
+
+        // Drag-n-drop
+        el.addEventListener('dragstart', e => {
+          e.dataTransfer.setData('text/plain', JSON.stringify(it));
+          e.dataTransfer.effectAllowed = 'copy';
+        });
+
+        grid.appendChild(el);
+      });
+
+      header.addEventListener('click', () => sec.classList.toggle('open'));
+      sec.appendChild(grid);
+      paletteGroups.appendChild(sec);
     });
   }
 
-  // ==================== КООРДИНАТЫ ====================
-  function m2px(mx, my) { return { x: mx * PX_PER_M, y: my * PX_PER_M }; }
-  function eventToM(e) {
-    var r = svg.getBoundingClientRect();
-    var vb = svg.getAttribute('viewBox').split(/[\s,]+/).map(Number);
-    var vx = vb[0] || 0, vy = vb[1] || 0, vw = vb[2], vh = vb[3];
-    var scale = Math.min(r.width / vw, r.height / vh);
-    var px = (e.clientX - r.left) / scale + vx;
-    var py = (e.clientY - r.top) / scale + vy;
-    return { px: px, py: py, m: { x: px / PX_PER_M, y: py / PX_PER_M } };
-  }
-
-  // ==================== ВЫДЕЛЕНИЕ ====================
-  function isSelected(kind, id) {
-    if (selected && selected.kind === kind && selected.id === id) return true;
-    return multiSelected.some(function (s) { return s.kind === kind && s.id === id; });
-  }
-  function clearSelection() {
-    selected = null;
-    multiSelected = [];
-  }
-  function toggleMulti(kind, id) {
-    var idx = multiSelected.findIndex(function (s) { return s.kind === kind && s.id === id; });
-    if (idx >= 0) multiSelected.splice(idx, 1);
-    else multiSelected.push({ kind: kind, id: id });
-    selected = null;
-  }
-
-  // ==================== СОЗДАНИЕ ОБЪЕКТОВ ====================
-  function placeObject(kind, xm, ym) {
-    if (!project) { alert('Сначала выберите проект'); return; }
-    xm = +xm.toFixed(2); ym = +ym.toFixed(2);
-    pushHistory('создание ' + kind);
-
-    if (kind === 'switch') {
-      var n = switches.length + 1;
-      API.post('/api/infra/' + project.id + '/switches', {
-        name: 'SW-' + (n < 10 ? '0' + n : n),
-        model: 'Generic PoE Switch',
-        x: xm, y: ym,
-        total_power_budget_w: 370, total_ports: 24, poe_ports: 24, location: ''
-      }).then(loadAll);
-      return;
-    }
-
-    if (kind === 'ap') {
-      var n2 = aps.length + 1;
-      API.post('/api/projects/' + project.id + '/aps', {
-        name: 'AP-' + (n2 < 10 ? '0' + n2 : n2), model: 'Generic AP',
-        x: xm, y: ym, tx_power_dbm: 20, antenna_gain: 6,
-        band: '5', channel: 44, ssid_type: 'corporate'
-      }).then(loadAll);
-      return;
-    }
-
-    if (['pc', 'laptop', 'printer', 'scanner', 'camera', 'iot'].indexOf(kind) >= 0) {
-      var names = { pc: 'ПК', laptop: 'Ноутбук', printer: 'Принтер',
-                    scanner: 'Сканер', camera: 'Камера', iot: 'IoT' };
-      API.post('/api/projects/' + project.id + '/devices', {
-        name: names[kind] + '-' + (devices.length + 1),
-        type: kind, x: xm, y: ym, band: '5',
-        required_rssi: -65, required_speed: 10, ssid_type: 'corporate'
-      }).then(loadAll);
-      return;
-    }
-
-    if (['sofa', 'table', 'chair', 'plant'].indexOf(kind) >= 0) {
-      API.post('/api/projects/' + project.id + '/elements', {
-        type: 'furniture', subtype: kind,
-        x: xm, y: ym, width: 1.5, height: 1, rotation: 0
-      }).then(loadAll);
-      return;
-    }
-  }
-
-  // ==================== СОЗДАНИЕ ФИГУРЫ (прямоугольник/эллипс/треугольник) ====================
-  function createShape(kind, material, xm, ym) {
-    if (!project) { alert('Сначала выберите проект'); return; }
-    var shapeType;
-    if (kind === 'shape_rect') shapeType = 'rect';
-    else if (kind === 'shape_ellipse') shapeType = 'ellipse';
-    else if (kind === 'shape_triangle') shapeType = 'triangle';
-    else shapeType = 'rect';
-
-    var w = 4, h = 3;
-    xm = +xm.toFixed(2); ym = +ym.toFixed(2);
-    pushHistory('создание фигуры ' + shapeType);
-
-    API.post('/api/projects/' + project.id + '/elements', {
-      type: 'shape',
-      subtype: shapeType,
-      material: material || 'brick',
-      x: xm, y: ym,
-      width: w, height: h
-    }).then(loadAll).catch(function (err) { alert(err.message); });
-  }
-
-  // ==================== РЕНДЕР ====================
-  function render() {
-    if (!project) {
-      [layerCoverage, layerDeviceLinks, layerCables, layerRooms, layerWalls,
-       layerFurniture, layerText, layerDevices, layerSwitches, layerAps,
-       layerSelection].forEach(function (l) {
-        if (l) l.innerHTML = '';
+  // Поиск в палитре
+  const paletteSearch = document.getElementById('paletteSearch');
+  if (paletteSearch) {
+    paletteSearch.addEventListener('input', function () {
+      const q = this.value.toLowerCase();
+      document.querySelectorAll('.palette-item').forEach(el => {
+        const t = (el.querySelector('span') || {}).textContent || '';
+        el.style.display = (!q || t.toLowerCase().includes(q)) ? '' : 'none';
       });
+    });
+  }
+
+  /* ============================================================
+     ФИЗИКА
+     ============================================================ */
+
+  function fspl(d, f) {
+    if (d <= 0.1) d = 0.1;
+    return 20 * Math.log10(d) + 20 * Math.log10(f) - 27.55;
+  }
+
+  function segInt(p1, p2, p3, p4) {
+    const d = (p2.x - p1.x) * (p4.y - p3.y) - (p2.y - p1.y) * (p4.x - p3.x);
+    if (Math.abs(d) < 1e-9) return false;
+    const t = ((p3.x - p1.x) * (p4.y - p3.y) - (p3.y - p1.y) * (p4.x - p3.x)) / d;
+    const u = ((p3.x - p1.x) * (p2.y - p1.y) - (p3.y - p1.y) * (p2.x - p1.x)) / d;
+    return t > 0 && t < 1 && u > 0 && u < 1;
+  }
+
+  function wallLoss(ap, px, py) {
+    let loss = 0;
+    const p1 = { x: ap.x, y: ap.y };
+    const p2 = { x: px, y: py };
+    for (const el of state.elements) {
+      if (el.type !== 'wall') continue;
+      if (segInt(p1, p2,
+        { x: el.x1, y: el.y1 },
+        { x: el.x2, y: el.y2 })) {
+        loss += (MATERIALS[el.material] || MATERIALS.concrete).loss;
+      }
+    }
+    return loss;
+  }
+
+  function signalAt(ap, x, y) {
+    const dz = (state.project.height_v || 3) - 1.2;
+    const dx = ap.x - x, dy = ap.y - y;
+    const d = Math.sqrt(dx * dx + dy * dy + dz * dz);
+    return ap.power + ap.gain - fspl(d, ap.freq) - wallLoss(ap, x, y);
+  }
+
+  function coverageAt(x, y) {
+    if (!state.aps.length) return -Infinity;
+    let best = -Infinity;
+    for (const ap of state.aps) {
+      const s = signalAt(ap, x, y);
+      if (s > best) best = s;
+    }
+    return best;
+  }
+
+  /* ============================================================
+     СЕТКА ЧЕРТЕЖА
+     ============================================================ */
+
+  function drawGrid() {
+    L.layerGrid.innerHTML = '';
+    if (!state.project) return;
+
+    const W = state.project.width_m * PX_PER_M;
+    const H = state.project.height_m * PX_PER_M;
+
+    // Рамка чертежа
+    const border = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+    border.setAttribute('x', 0);
+    border.setAttribute('y', 0);
+    border.setAttribute('width', W);
+    border.setAttribute('height', H);
+    border.setAttribute('fill', 'none');
+    border.setAttribute('stroke', '#444');
+    border.setAttribute('stroke-width', '1.5');
+    L.layerGrid.appendChild(border);
+
+    // Верхняя линейка
+    for (let x = 0; x <= state.project.width_m; x++) {
+      const l = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+      l.setAttribute('x1', x * PX_PER_M);
+      l.setAttribute('y1', 0);
+      l.setAttribute('x2', x * PX_PER_M);
+      l.setAttribute('y2', x % 5 === 0 ? -10 : -5);
+      l.setAttribute('stroke', '#555');
+      l.setAttribute('stroke-width', '1');
+      L.layerGrid.appendChild(l);
+
+      if (x % 5 === 0 && x > 0) {
+        const t = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        t.setAttribute('x', x * PX_PER_M);
+        t.setAttribute('y', -14);
+        t.setAttribute('text-anchor', 'middle');
+        t.setAttribute('class', 'svg-label');
+        t.textContent = x + ' м';
+        L.layerGrid.appendChild(t);
+      }
+    }
+
+    // Левая линейка
+    for (let y = 0; y <= state.project.height_m; y++) {
+      const l = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+      l.setAttribute('x1', 0);
+      l.setAttribute('y1', y * PX_PER_M);
+      l.setAttribute('x2', y % 5 === 0 ? -10 : -5);
+      l.setAttribute('y2', y * PX_PER_M);
+      l.setAttribute('stroke', '#555');
+      l.setAttribute('stroke-width', '1');
+      L.layerGrid.appendChild(l);
+
+      if (y % 5 === 0 && y > 0) {
+        const t = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        t.setAttribute('x', -14);
+        t.setAttribute('y', y * PX_PER_M + 3);
+        t.setAttribute('text-anchor', 'end');
+        t.setAttribute('class', 'svg-label');
+        t.textContent = y + ' м';
+        L.layerGrid.appendChild(t);
+      }
+    }
+  }
+
+  /* ============================================================
+     ГЛАВНЫЙ РЕНДЕР
+     ============================================================ */
+
+  function render() {
+    if (!state.project) {
+      Object.values(L).forEach(l => { if (l) l.innerHTML = ''; });
       return;
     }
-    renderCoverage();
-    renderDeviceLinks();
-    renderCables();
-    renderRooms();
+    drawGrid();
     renderWalls();
     renderShapes();
     renderFurniture();
     renderText();
     renderDevices();
+    renderIoT();
     renderSwitches();
     renderAPs();
-    renderSelectionMarkers();
+    renderCables();
+    renderCoverage();
+    renderMarkers();
+    renderLegendIcons();
+    if (state.heatmap) drawHeatmap();
   }
 
-  // ==================== СТЕНЫ (тип wall) ====================
+  /* ============================================================
+     РЕНДЕР: СТЕНЫ (с пунктирной длиной и якорями)
+     ============================================================ */
+
   function renderWalls() {
-    layerWalls.innerHTML = '';
-    elements.filter(function (el) {
-      return el.type === 'wall' || el.type === 'door' || el.type === 'window';
-    }).forEach(function (el) {
-      var a = m2px(el.x1, el.y1);
-      var b = m2px(el.x2, el.y2);
-      if (Math.abs(a.x - b.x) < 0.5 && Math.abs(a.y - b.y) < 0.5) return;
+    L.layerWalls.innerHTML = '';
 
-      var line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-      line.setAttribute('x1', a.x); line.setAttribute('y1', a.y);
-      line.setAttribute('x2', b.x); line.setAttribute('y2', b.y);
-      line.setAttribute('stroke-linecap', 'round');
-      line.setAttribute('data-kind', 'element');
-      line.setAttribute('data-id', el.id);
+    for (const el of state.elements) {
+      if (el.type !== 'wall') continue;
 
-      if (el.type === 'wall') {
-        line.setAttribute('stroke', WALL_COLORS[el.material] || WALL_COLORS.concrete);
-        line.setAttribute('stroke-width', WALL_WIDTHS[el.material] || 6);
-      } else if (el.type === 'door') {
-        line.setAttribute('stroke', '#8e44ad');
-        line.setAttribute('stroke-width', '4');
-        line.setAttribute('stroke-dasharray', '8 4');
-      } else {
-        line.setAttribute('stroke', '#3498db');
-        line.setAttribute('stroke-width', '5');
-      }
+      const a = m2px(el.x1, el.y1);
+      const b = m2px(el.x2, el.y2);
+      const dx = b.x - a.x, dy = b.y - a.y;
+      const len = Math.hypot(dx, dy);
+      if (len < 1) continue;
+
+      const mat = MATERIALS[el.material] || MATERIALS.concrete;
+
+      // Основная линия стены
+      const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+      line.setAttribute('x1', a.x);
+      line.setAttribute('y1', a.y);
+      line.setAttribute('x2', b.x);
+      line.setAttribute('y2', b.y);
+      line.setAttribute('stroke', 'url(#' + mat.pattern + ')');
+      line.setAttribute('stroke-width', mat.width);
+      line.setAttribute('stroke-linecap', 'square');
+      line.dataset.kind = 'element';
+      line.dataset.id = el.id;
 
       if (isSelected('element', el.id)) {
-        line.setAttribute('stroke', '#ffcc00');
-        line.setAttribute('stroke-width', '10');
+        line.setAttribute('stroke', '#2E5EAA');
+        line.setAttribute('stroke-width', mat.width + 3);
       }
 
-      line.style.cursor = 'pointer';
-      line.addEventListener('click', function (ev) {
-        ev.stopPropagation();
-        if (tool === 'select') {
-          if (ev.shiftKey) toggleMulti('element', el.id);
-          else { selected = { kind: 'element', id: el.id }; multiSelected = []; }
-          render(); renderProps();
+      line.style.cursor = 'move';
+
+      line.addEventListener('click', e => {
+        e.stopPropagation();
+        if (state.tool !== 'select') return;
+        if (e.shiftKey) toggleMulti('element', el.id);
+        else {
+          state.selected = { kind: 'element', id: el.id };
+          state.multiSelected = [];
         }
+        render();
+        renderProps();
       });
-      layerWalls.appendChild(line);
-    });
+
+      line.addEventListener('mousedown', e => {
+        if (state.tool === 'select') startDrag(e, 'element', el.id);
+      });
+
+      L.layerWalls.appendChild(line);
+
+      // Пунктирная линия длины (сдвинутая по нормали)
+      const ux = dx / len, uy = dy / len;
+      const nx = -uy, ny = ux;
+      const off = 14;
+
+      const dim = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+      dim.setAttribute('x1', a.x + nx * off);
+      dim.setAttribute('y1', a.y + ny * off);
+      dim.setAttribute('x2', b.x + nx * off);
+      dim.setAttribute('y2', b.y + ny * off);
+      dim.setAttribute('stroke', '#666');
+      dim.setAttribute('stroke-width', '0.8');
+      dim.setAttribute('stroke-dasharray', '3 3');
+      dim.setAttribute('pointer-events', 'none');
+      L.layerWalls.appendChild(dim);
+
+      // Засечки на концах
+      [a, b].forEach(pt => {
+        const tk = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+        tk.setAttribute('x1', pt.x + nx * (off - 4));
+        tk.setAttribute('y1', pt.y + ny * (off - 4));
+        tk.setAttribute('x2', pt.x + nx * (off + 4));
+        tk.setAttribute('y2', pt.y + ny * (off + 4));
+        tk.setAttribute('stroke', '#666');
+        tk.setAttribute('stroke-width', '0.8');
+        tk.setAttribute('pointer-events', 'none');
+        L.layerWalls.appendChild(tk);
+      });
+
+      // Подпись длины
+      const lenM = Math.hypot(el.x2 - el.x1, el.y2 - el.y1).toFixed(2);
+      const lbl = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+      lbl.setAttribute('x', (a.x + b.x) / 2 + nx * off);
+      lbl.setAttribute('y', (a.y + b.y) / 2 + ny * off - 3);
+      lbl.setAttribute('text-anchor', 'middle');
+      lbl.setAttribute('class', 'svg-dim-label');
+      lbl.setAttribute('pointer-events', 'none');
+      lbl.textContent = lenM + ' м';
+      L.layerWalls.appendChild(lbl);
+    }
   }
 
-  // ==================== ФИГУРЫ (тип shape) ====================
+  /* Поиск ближайшего якоря (угол/центр стены) */
+  function findAnchor(x, y, t) {
+    t = t || 0.8;
+    let best = null, bd = t;
+    for (const el of state.elements) {
+      if (el.type !== 'wall') continue;
+      const pts = [
+        { x: el.x1, y: el.y1 },
+        { x: el.x2, y: el.y2 },
+        { x: (el.x1 + el.x2) / 2, y: (el.y1 + el.y2) / 2 }
+      ];
+      for (const c of pts) {
+        const d = Math.hypot(c.x - x, c.y - y);
+        if (d < bd) { bd = d; best = c; }
+      }
+    }
+    return best;
+  }
+
+  /* ============================================================
+     РЕНДЕР: ФИГУРЫ И КОМНАТЫ
+     ============================================================ */
+
   function renderShapes() {
-    layerFurniture = layerFurniture; // чтобы не потерять ссылку
-    elements.filter(function (el) { return el.type === 'shape'; }).forEach(function (el) {
-      var p = m2px(el.x, el.y);
-      var w = (el.width || 4) * PX_PER_M;
-      var h = (el.height || 3) * PX_PER_M;
-      var color = WALL_COLORS[el.material] || WALL_COLORS.brick;
-      var stroke = '#2c2c3a';
+    L.layerRooms.innerHTML = '';
 
-      var shape;
-      if (el.subtype === 'ellipse') {
-        shape = document.createElementNS('http://www.w3.org/2000/svg', 'ellipse');
-        shape.setAttribute('cx', p.x + w / 2);
-        shape.setAttribute('cy', p.y + h / 2);
-        shape.setAttribute('rx', w / 2);
-        shape.setAttribute('ry', h / 2);
-      } else if (el.subtype === 'triangle') {
-        shape = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
-        shape.setAttribute('points',
-          (p.x + w / 2) + ',' + p.y + ' ' +
-          (p.x + w) + ',' + (p.y + h) + ' ' +
-          p.x + ',' + (p.y + h));
-      } else {
-        shape = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-        shape.setAttribute('x', p.x);
-        shape.setAttribute('y', p.y);
-        shape.setAttribute('width', w);
-        shape.setAttribute('height', h);
-        shape.setAttribute('rx', 2);
+    for (const el of state.elements) {
+      if (el.type === 'shape') {
+        const p = m2px(el.x, el.y);
+        const w = (el.width || 4) * PX_PER_M;
+        const h = (el.height || 3) * PX_PER_M;
+        let s;
+        if (el.subtype === 'ellipse') {
+          s = document.createElementNS('http://www.w3.org/2000/svg', 'ellipse');
+          s.setAttribute('cx', p.x + w / 2);
+          s.setAttribute('cy', p.y + h / 2);
+          s.setAttribute('rx', w / 2);
+          s.setAttribute('ry', h / 2);
+        } else if (el.subtype === 'triangle') {
+          s = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
+          s.setAttribute('points',
+            (p.x + w / 2) + ',' + p.y + ' ' +
+            (p.x + w) + ',' + (p.y + h) + ' ' +
+            p.x + ',' + (p.y + h));
+        } else {
+          s = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+          s.setAttribute('x', p.x);
+          s.setAttribute('y', p.y);
+          s.setAttribute('width', w);
+          s.setAttribute('height', h);
+        }
+        s.setAttribute('fill', 'rgba(46,94,170,.15)');
+        s.setAttribute('stroke', isSelected('element', el.id) ? '#2E5EAA' : '#666');
+        s.setAttribute('stroke-width', isSelected('element', el.id) ? 3 : 1.5);
+        s.dataset.kind = 'element';
+        s.dataset.id = el.id;
+        s.style.cursor = 'move';
+        s.addEventListener('mousedown', e => startDrag(e, 'element', el.id));
+        s.addEventListener('click', e => {
+          e.stopPropagation();
+          if (state.tool === 'select') {
+            state.selected = { kind: 'element', id: el.id };
+            state.multiSelected = [];
+            render(); renderProps();
+          }
+        });
+        L.layerRooms.appendChild(s);
       }
 
-      shape.setAttribute('fill', color);
-      shape.setAttribute('fill-opacity', '0.6');
-      shape.setAttribute('stroke', isSelected('element', el.id) ? '#ffcc00' : stroke);
-      shape.setAttribute('stroke-width', isSelected('element', el.id) ? '4' : '2');
-      shape.setAttribute('data-kind', 'element');
-      shape.setAttribute('data-id', el.id);
-      shape.style.cursor = 'move';
-
-      shape.addEventListener('mousedown', function (ev) {
-        if (tool === 'select') startDrag(ev, 'element', el.id);
-      });
-      shape.addEventListener('click', function (ev) {
-        ev.stopPropagation();
-        if (tool === 'select') {
-          if (ev.shiftKey) toggleMulti('element', el.id);
-          else { selected = { kind: 'element', id: el.id }; multiSelected = []; }
-          render(); renderProps();
-        }
-      });
-
-      // Помещаем фигуры в отдельный слой (используем layerRooms для них)
-      layerRooms.appendChild(shape);
-    });
+      if (el.type === 'room') {
+        try {
+          const pts = JSON.parse(el.points_json || '[]');
+          if (pts.length < 3) continue;
+          const poly = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
+          poly.setAttribute('points', pts.map(p => {
+            const q = m2px(p.x, p.y);
+            return q.x + ',' + q.y;
+          }).join(' '));
+          poly.setAttribute('fill', 'rgba(46,94,170,.05)');
+          poly.setAttribute('stroke', '#2E5EAA');
+          poly.setAttribute('stroke-width', '1.5');
+          poly.dataset.kind = 'element';
+          poly.dataset.id = el.id;
+          poly.addEventListener('click', e => {
+            e.stopPropagation();
+            if (state.tool === 'select') {
+              state.selected = { kind: 'element', id: el.id };
+              state.multiSelected = [];
+              render(); renderProps();
+            }
+          });
+          L.layerRooms.appendChild(poly);
+        } catch (err) { /* игнорируем битый JSON */ }
+      }
+    }
   }
 
-  // ==================== КОМНАТЫ (полигоны) ====================
-  function renderRooms() {
-    // Очищаем только полигоны-комнаты, не трогая фигуры
-    // Вместо этого создаём отдельный слой в HTML. Пока совмещаем.
-    // Здесь оставлено для обратной совместимости, если room создан как type='room'
-    elements.filter(function (el) { return el.type === 'room'; }).forEach(function (el) {
-      var pts;
-      try { pts = JSON.parse(el.points_json || '[]'); } catch (e) { pts = []; }
-      if (pts.length < 3) return;
-      var poly = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
-      poly.setAttribute('points', pts.map(function (p) {
-        var q = m2px(p.x, p.y); return q.x + ',' + q.y;
-      }).join(' '));
-      poly.setAttribute('fill', 'rgba(108,92,231,.06)');
-      poly.setAttribute('stroke', isSelected('element', el.id) ? '#ffcc00' : '#6c5ce7');
-      poly.setAttribute('stroke-width', isSelected('element', el.id) ? '4' : '2');
-      poly.setAttribute('data-kind', 'element');
-      poly.setAttribute('data-id', el.id);
-      poly.style.cursor = 'pointer';
-      poly.addEventListener('click', function (ev) {
-        ev.stopPropagation();
-        if (tool === 'select') {
-          if (ev.shiftKey) toggleMulti('element', el.id);
-          else { selected = { kind: 'element', id: el.id }; multiSelected = []; }
-          render(); renderProps();
-        }
-      });
-      layerRooms.appendChild(poly);
-    });
-  }
-
-  // ==================== МЕБЕЛЬ ====================
-  var FURN_ICON = { sofa: '🛋', table: '🪑', chair: '💺', plant: '🌿' };
+  /* ============================================================
+     РЕНДЕР: МЕБЕЛЬ
+     ============================================================ */
 
   function renderFurniture() {
-    layerFurniture.innerHTML = '';
-    elements.filter(function (el) { return el.type === 'furniture'; }).forEach(function (el) {
-      var p = m2px(el.x, el.y);
-      var g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    L.layerFurniture.innerHTML = '';
+    const ICON_MAP = {
+      sofa: 'sofa', table: 'table', chair: 'chair', plant: 'plant'
+    };
+
+    for (const el of state.elements) {
+      if (el.type !== 'furniture') continue;
+
+      const p = m2px(el.x, el.y);
+      const wPx = (el.width  || 1.5) * PX_PER_M;
+      const hPx = (el.height || 1)   * PX_PER_M;
+      const scaleF = wPx / 40;
+
+      const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
       g.setAttribute('transform',
-        'translate(' + p.x + ',' + p.y + ') rotate(' + (el.rotation || 0) + ')');
-      g.setAttribute('data-kind', 'element');
-      g.setAttribute('data-id', el.id);
+        'translate(' + (p.x - wPx / 2) + ',' + (p.y - hPx / 2) + ') scale(' + scaleF + ')');
+      g.dataset.kind = 'element';
+      g.dataset.id = el.id;
       g.style.cursor = 'move';
 
-      var bg = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-      bg.setAttribute('r', '16');
-      bg.setAttribute('fill', 'rgba(108,92,231,0.12)');
-      g.appendChild(bg);
+      const fo = document.createElementNS('http://www.w3.org/2000/svg', 'foreignObject');
+      fo.setAttribute('width', 40);
+      fo.setAttribute('height', 40);
 
-      var t = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-      t.setAttribute('text-anchor', 'middle');
-      t.setAttribute('y', '8');
-      t.setAttribute('font-size', '22');
-      t.textContent = FURN_ICON[el.subtype] || '📦';
-      g.appendChild(t);
+      const div = document.createElement('div');
+      div.setAttribute('xmlns', 'http://www.w3.org/1999/xhtml');
+      div.style.width = '40px';
+      div.style.height = '40px';
+      div.style.color = isSelected('element', el.id) ? '#2E5EAA' : '#c8c8c8';
+      div.innerHTML = window.getEditorIcon(ICON_MAP[el.subtype] || 'table');
+      fo.appendChild(div);
+      g.appendChild(fo);
 
-      if (isSelected('element', el.id)) {
-        var h = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-        h.setAttribute('r', 22); h.setAttribute('fill', 'none');
-        h.setAttribute('stroke', '#ffcc00'); h.setAttribute('stroke-width', '3');
-        g.appendChild(h);
-      }
-
-      g.addEventListener('mousedown', function (ev) {
-        if (tool === 'select') startDrag(ev, 'element', el.id);
-      });
-      g.addEventListener('click', function (ev) {
-        ev.stopPropagation();
-        if (tool === 'select') {
-          if (ev.shiftKey) toggleMulti('element', el.id);
-          else { selected = { kind: 'element', id: el.id }; multiSelected = []; }
+      g.addEventListener('mousedown', e => startDrag(e, 'element', el.id));
+      g.addEventListener('click', e => {
+        e.stopPropagation();
+        if (state.tool === 'select') {
+          state.selected = { kind: 'element', id: el.id };
+          state.multiSelected = [];
           render(); renderProps();
         }
       });
-      layerFurniture.appendChild(g);
-    });
+
+      L.layerFurniture.appendChild(g);
+    }
   }
 
-  // ==================== ТЕКСТ ====================
+  /* ============================================================
+     РЕНДЕР: ТЕКСТ
+     ============================================================ */
+
   function renderText() {
-    layerText.innerHTML = '';
-    elements.filter(function (el) { return el.type === 'text'; }).forEach(function (el) {
-      var p = m2px(el.x, el.y);
-      var t = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-      t.setAttribute('x', p.x); t.setAttribute('y', p.y);
-      t.setAttribute('font-size', '16');
-      t.setAttribute('fill', isSelected('element', el.id) ? '#ffcc00' : '#2c2c3a');
-      t.setAttribute('font-weight', '600');
-      t.setAttribute('data-kind', 'element');
-      t.setAttribute('data-id', el.id);
+    L.layerText.innerHTML = '';
+
+    for (const el of state.elements) {
+      if (el.type !== 'text') continue;
+
+      const p = m2px(el.x, el.y);
+      const t = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+      t.setAttribute('x', p.x);
+      t.setAttribute('y', p.y);
+      t.setAttribute('class', 'svg-label');
+      t.dataset.kind = 'element';
+      t.dataset.id = el.id;
       t.style.cursor = 'move';
       t.textContent = el.name || 'Текст';
-      t.addEventListener('mousedown', function (ev) {
-        if (tool === 'select') startDrag(ev, 'element', el.id);
-      });
-      t.addEventListener('click', function (ev) {
-        ev.stopPropagation();
-        if (tool === 'select') {
-          if (ev.shiftKey) toggleMulti('element', el.id);
-          else { selected = { kind: 'element', id: el.id }; multiSelected = []; }
+
+      t.addEventListener('mousedown', e => startDrag(e, 'element', el.id));
+      t.addEventListener('click', e => {
+        e.stopPropagation();
+        if (state.tool === 'select') {
+          state.selected = { kind: 'element', id: el.id };
+          state.multiSelected = [];
           render(); renderProps();
         }
       });
-      layerText.appendChild(t);
-    });
+
+      L.layerText.appendChild(t);
+    }
   }
 
-  // ==================== УСТРОЙСТВА ====================
-  var DEV_ICON = {
-    pc: '🖥', laptop: '💻', printer: '🖨', scanner: '📠',
-    camera: '📹', iot: '🌡', switch: '🔀'
-  };
+  /* ============================================================
+     РЕНДЕР: УСТРОЙСТВА (ПК, ноутбук, принтер, камера...)
+     ============================================================ */
 
   function renderDevices() {
-    layerDevices.innerHTML = '';
-    devices.forEach(function (d) {
-      var p = m2px(d.x, d.y);
-      var g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-      g.setAttribute('transform', 'translate(' + p.x + ',' + p.y + ')');
-      g.setAttribute('data-kind', 'device');
-      g.setAttribute('data-id', d.id);
+    L.layerDevices.innerHTML = '';
+
+    for (const d of state.devices) {
+      if (!DEV_ICON[d.type]) continue;
+
+      const p = m2px(d.x, d.y);
+      const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+      g.setAttribute('transform', 'translate(' + (p.x - 16) + ',' + (p.y - 16) + ')');
+      g.dataset.kind = 'device';
+      g.dataset.id = d.id;
       g.style.cursor = 'move';
 
-      var r = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-      r.setAttribute('x', -14); r.setAttribute('y', -14);
-      r.setAttribute('width', 28); r.setAttribute('height', 28);
-      r.setAttribute('rx', 5);
-      r.setAttribute('fill', '#ffffff');
-      r.setAttribute('stroke', isSelected('device', d.id) ? '#ffcc00' : '#7b7bff');
-      r.setAttribute('stroke-width', isSelected('device', d.id) ? '4' : '2');
-      g.appendChild(r);
+      const fo = document.createElementNS('http://www.w3.org/2000/svg', 'foreignObject');
+      fo.setAttribute('width', 32);
+      fo.setAttribute('height', 32);
 
-      var t = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-      t.setAttribute('text-anchor', 'middle');
-      t.setAttribute('y', '7');
-      t.setAttribute('font-size', '18');
-      t.textContent = DEV_ICON[d.type] || '📦';
-      g.appendChild(t);
+      const div = document.createElement('div');
+      div.setAttribute('xmlns', 'http://www.w3.org/1999/xhtml');
+      div.style.width = '32px';
+      div.style.height = '32px';
+      div.style.color = isSelected('device', d.id) ? '#2E5EAA' : '#b0b0b0';
+      div.innerHTML = window.getEditorIcon(DEV_ICON[d.type]);
+      fo.appendChild(div);
+      g.appendChild(fo);
 
-      g.addEventListener('mousedown', function (ev) {
-        if (tool === 'select') startDrag(ev, 'device', d.id);
-      });
-      g.addEventListener('click', function (ev) {
-        ev.stopPropagation();
-        if (tool === 'select') {
-          if (ev.shiftKey) toggleMulti('device', d.id);
-          else { selected = { kind: 'device', id: d.id }; multiSelected = []; }
+      const lbl = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+      lbl.setAttribute('x', 16);
+      lbl.setAttribute('y', 44);
+      lbl.setAttribute('text-anchor', 'middle');
+      lbl.setAttribute('class', 'svg-label');
+      lbl.textContent = d.name;
+      g.appendChild(lbl);
+
+      g.addEventListener('mousedown', e => startDrag(e, 'device', d.id));
+      g.addEventListener('click', e => {
+        e.stopPropagation();
+        if (state.tool === 'select') {
+          state.selected = { kind: 'device', id: d.id };
+          state.multiSelected = [];
           render(); renderProps();
         }
       });
-      layerDevices.appendChild(g);
-    });
+
+      L.layerDevices.appendChild(g);
+    }
   }
 
-  // ==================== КОММУТАТОРЫ ====================
-  function renderSwitches() {
-    layerSwitches.innerHTML = '';
-    switches.forEach(function (sw) {
-      if (sw.x == null || sw.y == null) return;
-      var p = m2px(sw.x, sw.y);
-      var g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-      g.setAttribute('transform', 'translate(' + p.x + ',' + p.y + ')');
-      g.setAttribute('data-kind', 'switch');
-      g.setAttribute('data-id', sw.id);
+  /* ============================================================
+     РЕНДЕР: IoT
+     ============================================================ */
+
+  function renderIoT() {
+    L.layerIoT.innerHTML = '';
+
+    for (const d of state.devices) {
+      if (!IOT_ICON[d.type]) continue;
+
+      const p = m2px(d.x, d.y);
+      const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+      g.setAttribute('transform', 'translate(' + (p.x - 14) + ',' + (p.y - 14) + ')');
+      g.dataset.kind = 'device';
+      g.dataset.id = d.id;
       g.style.cursor = 'move';
 
-      var rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-      rect.setAttribute('x', -16); rect.setAttribute('y', -12);
-      rect.setAttribute('width', 32); rect.setAttribute('height', 24);
-      rect.setAttribute('rx', 4);
-      rect.setAttribute('fill', '#2c3e50');
-      rect.setAttribute('stroke', isSelected('switch', sw.id) ? '#ffcc00' : '#fff');
-      rect.setAttribute('stroke-width', isSelected('switch', sw.id) ? '3' : '2');
-      g.appendChild(rect);
+      const fo = document.createElementNS('http://www.w3.org/2000/svg', 'foreignObject');
+      fo.setAttribute('width', 28);
+      fo.setAttribute('height', 28);
 
-      var t = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-      t.setAttribute('text-anchor', 'middle');
-      t.setAttribute('y', '6');
-      t.setAttribute('font-size', '13');
-      t.setAttribute('fill', '#fff');
-      t.textContent = '🔀';
-      g.appendChild(t);
+      const div = document.createElement('div');
+      div.setAttribute('xmlns', 'http://www.w3.org/1999/xhtml');
+      div.style.width = '28px';
+      div.style.height = '28px';
+      div.innerHTML = window.getEditorIcon(IOT_ICON[d.type]);
+      fo.appendChild(div);
+      g.appendChild(fo);
 
-      var lbl = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+      g.addEventListener('mousedown', e => startDrag(e, 'device', d.id));
+      g.addEventListener('click', e => {
+        e.stopPropagation();
+        if (state.tool === 'select') {
+          state.selected = { kind: 'device', id: d.id };
+          state.multiSelected = [];
+          render(); renderProps();
+        }
+      });
+
+      L.layerIoT.appendChild(g);
+    }
+  }
+
+  /* ============================================================
+     РЕНДЕР: КОММУТАТОРЫ
+     ============================================================ */
+
+  function renderSwitches() {
+    L.layerSwitches.innerHTML = '';
+
+    for (const sw of state.switches) {
+      const p = m2px(sw.x, sw.y);
+      const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+      g.setAttribute('transform', 'translate(' + (p.x - 20) + ',' + (p.y - 16) + ')');
+      g.dataset.kind = 'switch';
+      g.dataset.id = sw.id;
+      g.style.cursor = 'move';
+
+      const fo = document.createElementNS('http://www.w3.org/2000/svg', 'foreignObject');
+      fo.setAttribute('width', 40);
+      fo.setAttribute('height', 32);
+
+      const div = document.createElement('div');
+      div.setAttribute('xmlns', 'http://www.w3.org/1999/xhtml');
+      div.style.width = '40px';
+      div.style.height = '32px';
+      div.innerHTML = window.getEditorIcon('switch');
+      fo.appendChild(div);
+      g.appendChild(fo);
+
+      const lbl = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+      lbl.setAttribute('x', 20);
+      lbl.setAttribute('y', 44);
       lbl.setAttribute('text-anchor', 'middle');
-      lbl.setAttribute('y', '26');
-      lbl.setAttribute('font-size', '10');
-      lbl.setAttribute('fill', '#333');
-      lbl.setAttribute('font-weight', '600');
+      lbl.setAttribute('class', 'svg-label');
       lbl.textContent = sw.name;
       g.appendChild(lbl);
 
-      g.addEventListener('mousedown', function (e) {
-        if (tool === 'select') startDrag(e, 'switch', sw.id);
-      });
-      g.addEventListener('click', function (e) {
+      g.addEventListener('mousedown', e => startDrag(e, 'switch', sw.id));
+      g.addEventListener('click', e => {
         e.stopPropagation();
-        if (tool === 'select') {
-          if (e.shiftKey) toggleMulti('switch', sw.id);
-          else { selected = { kind: 'switch', id: sw.id }; multiSelected = []; }
+        if (state.tool === 'select') {
+          state.selected = { kind: 'switch', id: sw.id };
+          state.multiSelected = [];
           render(); renderProps();
         }
       });
-      layerSwitches.appendChild(g);
-    });
+
+      L.layerSwitches.appendChild(g);
+    }
   }
 
-  // ==================== AP ====================
+  /* ============================================================
+     РЕНДЕР: AP
+     ============================================================ */
+
   function renderAPs() {
-    layerAps.innerHTML = '';
-    aps.forEach(function (ap) {
-      var p = m2px(ap.x, ap.y);
-      var g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-      g.setAttribute('transform', 'translate(' + p.x + ',' + p.y + ')');
-      g.setAttribute('data-kind', 'ap');
-      g.setAttribute('data-id', ap.id);
+    L.layerAps.innerHTML = '';
+
+    for (const ap of state.aps) {
+      const p = m2px(ap.x, ap.y);
+      const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+      g.setAttribute('transform', 'translate(' + (p.x - 20) + ',' + (p.y - 20) + ')');
+      g.dataset.kind = 'ap';
+      g.dataset.id = ap.id;
       g.style.cursor = 'move';
 
-      var c = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-      c.setAttribute('r', 16);
-      c.setAttribute('fill', '#6c5ce7');
-      c.setAttribute('stroke', '#fff');
-      c.setAttribute('stroke-width', '2');
-      g.appendChild(c);
+      const fo = document.createElementNS('http://www.w3.org/2000/svg', 'foreignObject');
+      fo.setAttribute('width', 40);
+      fo.setAttribute('height', 40);
 
-      var t = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-      t.setAttribute('text-anchor', 'middle');
-      t.setAttribute('y', '6');
-      t.setAttribute('font-size', '15');
-      t.setAttribute('fill', '#fff');
-      t.textContent = '📡';
-      g.appendChild(t);
+      const div = document.createElement('div');
+      div.setAttribute('xmlns', 'http://www.w3.org/1999/xhtml');
+      div.style.width = '40px';
+      div.style.height = '40px';
+      div.style.color = '#2E5EAA';
+      div.innerHTML = window.getEditorIcon('ap');
+      fo.appendChild(div);
+      g.appendChild(fo);
 
-      var lbl = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+      const lbl = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+      lbl.setAttribute('x', 20);
+      lbl.setAttribute('y', 52);
       lbl.setAttribute('text-anchor', 'middle');
-      lbl.setAttribute('y', '34');
-      lbl.setAttribute('font-size', '11');
-      lbl.setAttribute('fill', '#333');
-      lbl.setAttribute('font-weight', '600');
+      lbl.setAttribute('class', 'svg-label');
       lbl.textContent = ap.name;
       g.appendChild(lbl);
 
-      if (isSelected('ap', ap.id)) {
-        var h = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-        h.setAttribute('r', 26); h.setAttribute('fill', 'rgba(255,204,0,.25)');
-        g.insertBefore(h, c);
-      }
-
-      g.addEventListener('mousedown', function (ev) {
-        if (tool === 'select') startDrag(ev, 'ap', ap.id);
-      });
-      g.addEventListener('click', function (ev) {
-        ev.stopPropagation();
-        if (tool === 'select') {
-          if (ev.shiftKey) toggleMulti('ap', ap.id);
-          else { selected = { kind: 'ap', id: ap.id }; multiSelected = []; }
+      g.addEventListener('mousedown', e => startDrag(e, 'ap', ap.id));
+      g.addEventListener('click', e => {
+        e.stopPropagation();
+        if (state.tool === 'select') {
+          state.selected = { kind: 'ap', id: ap.id };
+          state.multiSelected = [];
           render(); renderProps();
         }
       });
-      layerAps.appendChild(g);
-    });
+
+      L.layerAps.appendChild(g);
+    }
   }
 
-  // ==================== RESIZE-МАРКЕРЫ ====================
-  function renderSelectionMarkers() {
-    layerSelection.innerHTML = '';
-    // Маркеры показываем только для одиночного выделения фигуры/комнаты
-    if (!selected || selected.kind !== 'element') return;
-    var el = elements.find(function (x) { return x.id === selected.id; });
-    if (!el) return;
-    if (el.type !== 'shape' && el.type !== 'room') return;
+  /* ============================================================
+     РЕНДЕР: КАБЕЛИ И БЕСПРОВОДНЫЕ СВЯЗИ
+     ============================================================ */
 
-    var p = m2px(el.x, el.y);
-    var w = (el.width || 4) * PX_PER_M;
-    var h = (el.height || 3) * PX_PER_M;
+  function drawCableLine(x1, y1, x2, y2, lenM, isMain, kind) {
+    const a = m2px(x1, y1);
+    const b = m2px(x2, y2);
+    const over = lenM > CABLE_LIMIT_M;
 
-    // 4 угла + 4 середины сторон
-    var pts = [
-      { x: p.x,         y: p.y,         corner: 'tl' },
-      { x: p.x + w / 2, y: p.y,         corner: 'tc' },
-      { x: p.x + w,     y: p.y,         corner: 'tr' },
-      { x: p.x + w,     y: p.y + h / 2, corner: 'rc' },
-      { x: p.x + w,     y: p.y + h,     corner: 'br' },
-      { x: p.x + w / 2, y: p.y + h,     corner: 'bc' },
-      { x: p.x,         y: p.y + h,     corner: 'bl' },
-      { x: p.x,         y: p.y + h / 2, corner: 'lc' }
-    ];
+    const path = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+    path.setAttribute('x1', a.x);
+    path.setAttribute('y1', a.y);
+    path.setAttribute('x2', b.x);
+    path.setAttribute('y2', b.y);
+    path.setAttribute('stroke', over ? '#f44336' : '#2E5EAA');
+    path.setAttribute('stroke-width', isMain ? '1.2' : '0.8');
+    path.setAttribute('stroke-dasharray', kind === 'uplink' ? '4 3' : '2 3');
+    path.setAttribute('opacity', '0.75');
+    L.layerCables.appendChild(path);
 
-    pts.forEach(function (pt) {
-      var m = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-      m.setAttribute('x', pt.x - 5);
-      m.setAttribute('y', pt.y - 5);
-      m.setAttribute('width', 10);
-      m.setAttribute('height', 10);
-      m.setAttribute('class', 'resize-marker');
-      m.setAttribute('data-el-id', el.id);
-      m.setAttribute('data-corner', pt.corner);
-      m.style.pointerEvents = 'all';
-      m.style.cursor = cursorForCorner(pt.corner);
-      m.addEventListener('mousedown', function (ev) {
-        ev.stopPropagation();
-        ev.preventDefault();
-        startResize(ev, el, pt.corner);
+    if (isMain) {
+      const lbl = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+      lbl.setAttribute('x', (a.x + b.x) / 2);
+      lbl.setAttribute('y', (a.y + b.y) / 2 - 3);
+      lbl.setAttribute('text-anchor', 'middle');
+      lbl.setAttribute('class', 'svg-label');
+      lbl.textContent = lenM.toFixed(1) + ' м';
+      L.layerCables.appendChild(lbl);
+    }
+  }
+
+  function renderCables() {
+    L.layerCables.innerHTML = '';
+    const chk = document.getElementById('chkLayerCables');
+    if (chk && !chk.checked) return;
+
+    // 1. AP → ближайший коммутатор
+    if (state.switches.length) {
+      for (const ap of state.aps) {
+        let best = null, bd = Infinity;
+        for (const sw of state.switches) {
+          const d = Math.hypot(ap.x - sw.x, ap.y - sw.y) * CABLE_COEF;
+          if (d < bd) { bd = d; best = sw; }
+        }
+        if (!best) continue;
+        drawCableLine(best.x, best.y, ap.x, ap.y, bd, true, 'uplink');
+      }
+    }
+
+    // 2. Беспроводные устройства → ближайшая AP (пунктир)
+    for (const d of state.devices) {
+      if (!WIRELESS_TYPES.includes(d.type)) continue;
+      let bestAP = null, bdAP = Infinity;
+      for (const ap of state.aps) {
+        const dist = Math.hypot(d.x - ap.x, d.y - ap.y);
+        if (dist < bdAP) { bdAP = dist; bestAP = ap; }
+      }
+      if (!bestAP) continue;
+      const a = m2px(bestAP.x, bestAP.y);
+      const b = m2px(d.x, d.y);
+      const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+      line.setAttribute('x1', a.x);
+      line.setAttribute('y1', a.y);
+      line.setAttribute('x2', b.x);
+      line.setAttribute('y2', b.y);
+      line.setAttribute('stroke', bdAP > 30 ? '#f44336' : '#4caf50');
+      line.setAttribute('stroke-width', '1');
+      line.setAttribute('stroke-dasharray', '2 3');
+      line.setAttribute('opacity', '0.6');
+      L.layerCables.appendChild(line);
+    }
+  }
+
+  /* ============================================================
+     РЕНДЕР: ЗОНЫ ПОКРЫТИЯ (когда нет тепловой карты)
+     ============================================================ */
+
+  function renderCoverage() {
+    L.layerCoverage.innerHTML = '';
+    const chk = document.getElementById('chkLayerCoverage');
+    if (chk && !chk.checked) return;
+    if (state.heatmap) return;
+
+    for (const ap of state.aps) {
+      const p = m2px(ap.x, ap.y);
+      let r_m = 5 + (ap.power - 10) * 0.8;
+      if (ap.freq === 2400) r_m *= 1.4;
+      if (ap.freq === 6000) r_m *= 0.8;
+      const r_px = r_m * PX_PER_M;
+
+      const c = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+      c.setAttribute('cx', p.x);
+      c.setAttribute('cy', p.y);
+      c.setAttribute('r', r_px);
+      c.setAttribute('fill', 'rgba(46,94,170,.08)');
+      c.setAttribute('stroke', 'rgba(46,94,170,.5)');
+      c.setAttribute('stroke-width', '1');
+      c.setAttribute('stroke-dasharray', '4 4');
+      c.setAttribute('pointer-events', 'none');
+      L.layerCoverage.appendChild(c);
+    }
+  }
+
+  /* ============================================================
+     ВЫДЕЛЕНИЕ И МАРКЕРЫ RESIZE
+     ============================================================ */
+
+  function isSelected(kind, id) {
+    if (state.selected && state.selected.kind === kind && state.selected.id === id) return true;
+    return state.multiSelected.some(s => s.kind === kind && s.id === id);
+  }
+
+  function toggleMulti(kind, id) {
+    const i = state.multiSelected.findIndex(s => s.kind === kind && s.id === id);
+    if (i >= 0) state.multiSelected.splice(i, 1);
+    else state.multiSelected.push({ kind, id });
+    state.selected = null;
+  }
+
+  function getObj(kind, id) {
+    if (kind === 'ap')      return state.aps.find(x => x.id === id);
+    if (kind === 'device')  return state.devices.find(x => x.id === id);
+    if (kind === 'switch')  return state.switches.find(x => x.id === id);
+    if (kind === 'element') return state.elements.find(x => x.id === id);
+  }
+
+  function renderMarkers() {
+    L.layerSelection.innerHTML = '';
+    if (state.multiSelected.length > 1) return;
+    if (!state.selected || state.selected.kind !== 'element') return;
+
+    const el = state.elements.find(x => x.id === state.selected.id);
+    if (!el || el.type === 'text') return;
+
+    let x1, y1, x2, y2;
+    if (el.type === 'wall') {
+      const a = m2px(el.x1, el.y1);
+      const b = m2px(el.x2, el.y2);
+      x1 = Math.min(a.x, b.x); y1 = Math.min(a.y, b.y);
+      x2 = Math.max(a.x, b.x); y2 = Math.max(a.y, b.y);
+      if (x2 - x1 < 12) { x1 -= 6; x2 += 6; }
+      if (y2 - y1 < 12) { y1 -= 6; y2 += 6; }
+    } else if (el.type === 'shape') {
+      const p = m2px(el.x, el.y);
+      x1 = p.x;
+      y1 = p.y;
+      x2 = p.x + (el.width  || 4) * PX_PER_M;
+      y2 = p.y + (el.height || 3) * PX_PER_M;
+    } else if (el.type === 'furniture') {
+      const p = m2px(el.x, el.y);
+      const w = (el.width  || 1.5) * PX_PER_M;
+      const h = (el.height || 1)   * PX_PER_M;
+      x1 = p.x - w / 2;
+      y1 = p.y - h / 2;
+      x2 = p.x + w / 2;
+      y2 = p.y + h / 2;
+    } else {
+      return;
+    }
+
+    if (el.type !== 'wall') {
+      const r = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+      r.setAttribute('x', x1);
+      r.setAttribute('y', y1);
+      r.setAttribute('width', x2 - x1);
+      r.setAttribute('height', y2 - y1);
+      r.setAttribute('fill', 'none');
+      r.setAttribute('stroke', '#2E5EAA');
+      r.setAttribute('stroke-width', '1');
+      r.setAttribute('stroke-dasharray', '3 3');
+      r.setAttribute('pointer-events', 'none');
+      L.layerSelection.appendChild(r);
+    }
+
+    let markers = [];
+    if (el.type === 'wall') {
+      const a = m2px(el.x1, el.y1);
+      const b = m2px(el.x2, el.y2);
+      markers = [
+        { x: a.x, y: a.y, which: 'start' },
+        { x: b.x, y: b.y, which: 'end' }
+      ];
+    } else {
+      const cx = (x1 + x2) / 2, cy = (y1 + y2) / 2;
+      markers = [
+        { x: x1, y: y1, c: 'nwse-resize' },
+        { x: cx, y: y1, c: 'ns-resize' },
+        { x: x2, y: y1, c: 'nesw-resize' },
+        { x: x2, y: cy, c: 'ew-resize' },
+        { x: x2, y: y2, c: 'nwse-resize' },
+        { x: cx, y: y2, c: 'ns-resize' },
+        { x: x1, y: y2, c: 'nesw-resize' },
+        { x: x1, y: cy, c: 'ew-resize' }
+      ];
+    }
+
+    markers.forEach(cn => {
+      const mk = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+      mk.setAttribute('x', cn.x - 5);
+      mk.setAttribute('y', cn.y - 5);
+      mk.setAttribute('width', 10);
+      mk.setAttribute('height', 10);
+      mk.setAttribute('fill', '#fff');
+      mk.setAttribute('stroke', '#2E5EAA');
+      mk.setAttribute('stroke-width', '2');
+      mk.style.cursor = cn.c || 'move';
+      mk.style.pointerEvents = 'all';
+      mk.addEventListener('mousedown', ev => {
+        ev.stopPropagation(); ev.preventDefault();
+        if (el.type === 'wall') {
+          startWallResize(ev, el, cn.which);
+        } else {
+          startShapeResize(ev, el, cn.x, cn.y, x1, y1, x2, y2);
+        }
       });
-      layerSelection.appendChild(m);
+      L.layerSelection.appendChild(mk);
     });
   }
 
-  function cursorForCorner(corner) {
-    if (corner === 'tl' || corner === 'br') return 'nwse-resize';
-    if (corner === 'tr' || corner === 'bl') return 'nesw-resize';
-    if (corner === 'tc' || corner === 'bc') return 'ns-resize';
-    if (corner === 'lc' || corner === 'rc') return 'ew-resize';
-    return 'nwse-resize';
+  /* ============================================================
+     ЛЕГЕНДА (иконки оборудования)
+     ============================================================ */
+
+  function renderLegendIcons() {
+    const grid = document.getElementById('legendGrid');
+    if (!grid) return;
+    const list = window.EditorLegendList || [];
+    grid.innerHTML = list.map(([k, l]) =>
+      '<div class="legend-item">' +
+        '<span class="ic">' + window.getEditorIcon(k) + '</span>' +
+        l +
+      '</div>'
+    ).join('');
   }
 
-  function startResize(e, el, corner) {
-    resize = {
-      el: el,
-      corner: corner,
-      startW: el.width || 4,
-      startH: el.height || 3,
-      startX: el.x,
-      startY: el.y,
-      mouseStartM: eventToM(e).m
+  /* ============================================================
+     VIEWBOX / ZOOM
+     ============================================================ */
+
+  function applyViewBox(x, y, w, h) {
+    svg.setAttribute('viewBox', x + ' ' + y + ' ' + w + ' ' + h);
+    state._vb = { x, y, w, h };
+  }
+
+  /* ============================================================
+     ЭКСПОРТ (внутренний API для второй части файла)
+     ============================================================ */
+
+  // Открываем наружу только то, что нужно второй части (в том же файле)
+  // — через объект внутреннего API
+  /* ============================================================
+     ТЕПЛОВАЯ КАРТА
+     ============================================================ */
+
+  function calcHeatmap(mode) {
+    if (!state.project) return alert('Создайте проект');
+    if (!state.aps.length) return alert('Разместите хотя бы одну AP');
+    state.heatmapMode = mode;
+    state.heatmap = buildHeatmap();
+    drawHeatmap();
+    heatmapCanvas.style.display = 'block';
+    canvasHint.textContent = 'Тепловая карта: ' + mode.toUpperCase();
+  }
+
+  function recalcHeatmap() {
+    if (!state.heatmap) return;
+    state.heatmap = buildHeatmap();
+    drawHeatmap();
+  }
+
+  function buildHeatmap() {
+    const step = 0.5;
+    const cols = Math.ceil(state.project.width_m  / step);
+    const rows = Math.ceil(state.project.height_m / step);
+    const grid = [];
+
+    let total = 0, sum = 0;
+    let dead = 0, weak = 0, good = 0, exc = 0;
+    let min = Infinity, max = -Infinity;
+    const deadZones = [];
+
+    for (let r = 0; r < rows; r++) {
+      const row = [];
+      for (let c = 0; c < cols; c++) {
+        const x = c * step + step / 2;
+        const y = r * step + step / 2;
+        const dbm = coverageAt(x, y);
+        row.push(dbm);
+        total++;
+        sum += dbm;
+        if (dbm < min) min = dbm;
+        if (dbm > max) max = dbm;
+        if (dbm >= -65) exc++;
+        else if (dbm >= -75) good++;
+        else if (dbm >= -85) weak++;
+        else {
+          dead++;
+          if (deadZones.length < 50) deadZones.push({ x, y, dbm });
+        }
+      }
+      grid.push(row);
+    }
+
+    return {
+      cols, rows, grid,
+      stats: {
+        total,
+        avg: sum / total,
+        min, max,
+        deadPct: dead / total * 100,
+        weakPct: weak / total * 100,
+        goodPct: good / total * 100,
+        excPct:  exc / total * 100,
+        deadZones
+      }
     };
-    document.addEventListener('mousemove', onResizeMove);
-    document.addEventListener('mouseup', onResizeEnd);
   }
 
-  function onResizeMove(e) {
-    if (!resize) return;
-    var em = eventToM(e);
-    var dx = em.m.x - resize.mouseStartM.x;
-    var dy = em.m.y - resize.mouseStartM.y;
-
-    var w = resize.startW;
-    var h = resize.startH;
-    var x = resize.startX;
-    var y = resize.startY;
-
-    if (resize.corner === 'br') { w = resize.startW + dx; h = resize.startH + dy; }
-    else if (resize.corner === 'tr') { w = resize.startW + dx; h = resize.startH - dy; y = resize.startY + dy; }
-    else if (resize.corner === 'bl') { w = resize.startW - dx; h = resize.startH + dy; x = resize.startX + dx; }
-    else if (resize.corner === 'tl') { w = resize.startW - dx; h = resize.startH - dy; x = resize.startX + dx; y = resize.startY + dy; }
-    else if (resize.corner === 'rc') { w = resize.startW + dx; }
-    else if (resize.corner === 'lc') { w = resize.startW - dx; x = resize.startX + dx; }
-    else if (resize.corner === 'bc') { h = resize.startH + dy; }
-    else if (resize.corner === 'tc') { h = resize.startH - dy; y = resize.startY + dy; }
-
-    if (w < 0.5) w = 0.5;
-    if (h < 0.5) h = 0.5;
-
-    resize._new = {
-      x: +snap(x).toFixed(2),
-      y: +snap(y).toFixed(2),
-      width: +snap(w).toFixed(2),
-      height: +snap(h).toFixed(2)
-    };
-    // Обновляем визуально
-    render();
+  function colorFor(v, mode) {
+    if (mode === 'rssi') {
+      if (v >= -65) return 'rgba(76,175,80,0.45)';
+      if (v >= -75) return 'rgba(255,193,7,0.45)';
+      if (v >= -85) return 'rgba(255,152,0,0.5)';
+      return 'rgba(244,67,54,0.55)';
+    }
+    if (mode === 'snr') {
+      const s = v + 95;
+      if (s >= 40) return 'rgba(76,175,80,0.45)';
+      if (s >= 25) return 'rgba(255,193,7,0.45)';
+      return 'rgba(244,67,54,0.55)';
+    }
+    return 'rgba(0,0,0,0)';
   }
 
-  function onResizeEnd() {
-    document.removeEventListener('mousemove', onResizeMove);
-    document.removeEventListener('mouseup', onResizeEnd);
-    if (!resize || !resize._new) { resize = null; return; }
-    var el = resize.el;
-    var nn = resize._new;
-    resize = null;
+  function drawHeatmap() {
+    if (!state.heatmap || !state.project) return;
 
-    pushHistory('изменение размера');
-    API.put('/api/projects/elements/' + el.id, {
-      type: 'shape',
-      subtype: el.subtype || 'rect',
-      material: el.material || 'brick',
-      x: nn.x, y: nn.y,
-      width: nn.width, height: nn.height
-    }).then(loadAll).catch(function (err) { alert(err.message); });
+    const W = state.project.width_m  * PX_PER_M;
+    const H = state.project.height_m * PX_PER_M;
+    heatmapCanvas.width  = W;
+    heatmapCanvas.height = H;
+
+    // Позиционируем canvas поверх области (0,0)-(W,H) в SVG-пикселях
+    const m = svgMetrics();
+    const wr = wrap.getBoundingClientRect();
+    const screenX = (0 - m.vx) * m.scale + m.offsetX + (m.r.left - wr.left);
+    const screenY = (0 - m.vy) * m.scale + m.offsetY + (m.r.top  - wr.top);
+    const screenW = W * m.scale;
+    const screenH = H * m.scale;
+
+    heatmapCanvas.style.left   = screenX + 'px';
+    heatmapCanvas.style.top    = screenY + 'px';
+    heatmapCanvas.style.width  = screenW + 'px';
+    heatmapCanvas.style.height = screenH + 'px';
+
+    const ctx = heatmapCanvas.getContext('2d');
+    ctx.clearRect(0, 0, W, H);
+
+    const cw = W / state.heatmap.cols;
+    const ch = H / state.heatmap.rows;
+
+    for (let r = 0; r < state.heatmap.rows; r++) {
+      for (let c = 0; c < state.heatmap.cols; c++) {
+        const v = state.heatmap.grid[r][c];
+        ctx.fillStyle = colorFor(v, state.heatmapMode);
+        ctx.fillRect(c * cw, r * ch, cw + 0.5, ch + 0.5);
+      }
+    }
   }
 
-  // ==================== ПЕРЕТАСКИВАНИЕ ====================
-  function getObjectPosition(kind, id) {
-    var arr;
-    if (kind === 'ap') arr = aps;
-    else if (kind === 'device') arr = devices;
-    else if (kind === 'switch') arr = switches;
-    else if (kind === 'element') arr = elements;
-    else return null;
-    return arr.find(function (x) { return x.id === id; });
-  }
+  /* ============================================================
+     DRAG&DROP: ПЕРЕТАСКИВАНИЕ ОБЪЕКТОВ
+     ============================================================ */
 
   function startDrag(e, kind, id) {
-    if (tool !== 'select') return;
+    if (state.tool !== 'select') return;
     e.stopPropagation();
     e.preventDefault();
 
-    var alreadyInMulti = multiSelected.some(function (s) { return s.kind === kind && s.id === id; });
-    var isSingleton = selected && selected.kind === kind && selected.id === id;
-    if (!alreadyInMulti && !isSingleton) {
-      selected = { kind: kind, id: id };
-      multiSelected = [];
+    const inMulti = state.multiSelected.some(s => s.kind === kind && s.id === id);
+    const single  = state.selected &&
+                    state.selected.kind === kind &&
+                    state.selected.id === id;
+
+    if (!inMulti && !single) {
+      state.selected = { kind, id };
+      state.multiSelected = [];
       render();
       renderProps();
     }
 
-    var toDrag = [];
-    if (multiSelected.length) {
-      multiSelected.forEach(function (s) {
-        var obj = getObjectPosition(s.kind, s.id);
-        if (obj && obj.x != null) toDrag.push({ kind: s.kind, id: s.id, startX: obj.x, startY: obj.y });
-      });
-    } else if (selected) {
-      var obj = getObjectPosition(selected.kind, selected.id);
-      if (obj && obj.x != null) toDrag.push({ kind: selected.kind, id: selected.id, startX: obj.x, startY: obj.y });
+    const list = state.multiSelected.length
+      ? state.multiSelected
+      : [state.selected];
+
+    const items = [];
+    for (const s of list) {
+      const o = getObj(s.kind, s.id);
+      if (!o) continue;
+      if (s.kind === 'element' && o.type === 'wall') {
+        items.push({
+          kind: s.kind, id: s.id, isWall: true,
+          sx: o.x1, sy: o.y1, ex: o.x2, ey: o.y2
+        });
+      } else if (o.x != null && o.y != null) {
+        items.push({ kind: s.kind, id: s.id, sx: o.x, sy: o.y });
+      }
     }
+    if (!items.length) return;
 
-    if (!toDrag.length) return;
+    const em = eventToM(e);
+    state.drag = { items, sm: em.m };
 
-    var em = eventToM(e);
-    drag = {
-      items: toDrag,
-      mouseStartM: { x: em.m.x, y: em.m.y }
-    };
+    document.body.style.cursor = 'grabbing';
     document.addEventListener('mousemove', onDragMove);
     document.addEventListener('mouseup', onDragEnd);
   }
 
   function onDragMove(e) {
-    if (!drag) return;
-    var em = eventToM(e);
-    var dx = em.m.x - drag.mouseStartM.x;
-    var dy = em.m.y - drag.mouseStartM.y;
+    if (!state.drag) return;
+    const em = eventToM(e);
+    const dx = em.m.x - state.drag.sm.x;
+    const dy = em.m.y - state.drag.sm.y;
+    const first = state.drag.items[0];
 
-    var first = drag.items[0];
-    var newX = first.startX + dx;
-    var newY = first.startY + dy;
-    var snappedX = snap(newX);
-    var snappedY = snap(newY);
-    var snapDX = snappedX - first.startX;
-    var snapDY = snappedY - first.startY;
+    const sdx = snap(first.sx + dx) - first.sx;
+    const sdy = snap(first.sy + dy) - first.sy;
 
-    drag.items.forEach(function (item) {
-      item._newX = item.startX + snapDX;
-      item._newY = item.startY + snapDY;
-      var g = svg.querySelector('[data-kind="' + item.kind + '"][data-id="' + item.id + '"]');
-      if (g && g.tagName.toLowerCase() === 'g') {
-        var pos = m2px(item._newX, item._newY);
-        var obj = getObjectPosition(item.kind, item.id);
-        var rot = obj && obj.rotation ? obj.rotation : 0;
-        g.setAttribute('transform',
-          'translate(' + pos.x + ',' + pos.y + ')' +
-          (rot ? ' rotate(' + rot + ')' : ''));
+    for (const it of state.drag.items) {
+      const obj = getObj(it.kind, it.id);
+      if (!obj) continue;
+
+      if (it.isWall) {
+        it.nx1 = first.sx + sdx + (it.sx - first.sx);
+        it.ny1 = first.sy + sdy + (it.sy - first.sy);
+        it.nx2 = first.sx + sdx + (it.ex - first.sx);
+        it.ny2 = first.sy + sdy + (it.ey - first.sy);
+        obj.x1 = it.nx1; obj.y1 = it.ny1;
+        obj.x2 = it.nx2; obj.y2 = it.ny2;
+      } else {
+        it.nx = first.sx + sdx + (it.sx - first.sx);
+        it.ny = first.sy + sdy + (it.sy - first.sy);
+        obj.x = it.nx; obj.y = it.ny;
       }
-    });
+    }
 
-    flashSnapIndicator(snappedX, snappedY);
+    render();
+    flashSnap(snap(first.sx + dx), snap(first.sy + dy));
   }
 
   function onDragEnd() {
     document.removeEventListener('mousemove', onDragMove);
     document.removeEventListener('mouseup', onDragEnd);
-    if (!drag || !drag.items.length) { drag = null; return; }
-    var items = drag.items;
-    drag = null;
+    document.body.style.cursor = '';
+
+    if (!state.drag) return;
+    const items = state.drag.items;
+    state.drag = null;
+
+    let moved = false;
+    for (const it of items) {
+      if (it.isWall && it.nx1 != null) { moved = true; break; }
+      if (!it.isWall && it.nx != null) { moved = true; break; }
+    }
+    if (!moved) { render(); renderProps(); return; }
 
     pushHistory('перемещение');
 
-    var promises = items.map(function (item) {
-      var obj = getObjectPosition(item.kind, item.id);
-      if (!obj) return Promise.resolve();
-      var payload = Object.assign({}, obj, { x: +item._newX.toFixed(2), y: +item._newY.toFixed(2) });
-      delete payload.id; delete payload.project_id; delete payload.created_at;
-      var url;
-      if (item.kind === 'ap') url = '/api/projects/aps/' + item.id;
-      else if (item.kind === 'device') url = '/api/projects/devices/' + item.id;
-      else if (item.kind === 'element') url = '/api/projects/elements/' + item.id;
-      else if (item.kind === 'switch') url = '/api/infra/switches/' + item.id;
-      else return Promise.resolve();
-      return API.put(url, payload);
-    });
-    Promise.all(promises).then(loadAll).catch(function (err) {
-      console.error(err);
-      loadAll();
-    });
-  }
+    // Применяем изменения и синхронизируем с сервером
+    const promises = [];
 
-  // ==================== ПАЛИТРА ====================
-  // Инициализация SVG-иконок в палитре
-  document.querySelectorAll('.palette-item [data-icon]').forEach(function (el) {
-    var key = el.dataset.icon;
-    if (window.getEditorIcon) {
-      el.innerHTML = window.getEditorIcon(key);
-    }
-  });
+    for (const it of items) {
+      const o = getObj(it.kind, it.id);
+      if (!o) continue;
 
-  document.querySelectorAll('.palette-item').forEach(function (item) {
-    // --- Клик — добавить в центр (для стен — линейный режим) ---
-    item.addEventListener('click', function (e) {
-      if (!project) { alert('Создайте или выберите проект'); return; }
-      e.preventDefault();
-      var kind = item.dataset.add;
-      var material = item.dataset.material;
+      if (it.isWall) {
+        if (it.nx1 == null) continue;
+        o.x1 = +it.nx1.toFixed(2); o.y1 = +it.ny1.toFixed(2);
+        o.x2 = +it.nx2.toFixed(2); o.y2 = +it.ny2.toFixed(2);
 
-      // Стена (линейный режим)
-      if (kind && kind.indexOf('wall_') === 0) {
-        tool = 'wall';
-        var matSelect = document.getElementById('wallMaterial');
-        if (matSelect && material) matSelect.value = material;
-        document.querySelectorAll('.tool-btn[data-tool]').forEach(function (b) {
-          b.classList.toggle('active', b.dataset.tool === 'wall');
-        });
-        canvasHint.textContent = 'Линейный режим стены (' + material + '). Клик — начало, клик — конец, Esc — отмена.';
-        return;
+        promises.push(Api.updateElement(o.id, {
+          type: 'wall', material: o.material,
+          x1: o.x1, y1: o.y1, x2: o.x2, y2: o.y2
+        }).catch(err => console.error('update element:', err)));
+      } else if (it.nx != null) {
+        o.x = +it.nx.toFixed(2); o.y = +it.ny.toFixed(2);
+
+        const payload = objectToApiPayload(it.kind, o);
+        if (!payload) continue;
+
+        if (it.kind === 'ap') {
+          promises.push(Api.updateAP(o.id, payload).catch(err => console.error('update ap:', err)));
+        } else if (it.kind === 'device') {
+          promises.push(Api.updateDevice(o.id, payload).catch(err => console.error('update device:', err)));
+        } else if (it.kind === 'switch') {
+          promises.push(Api.updateSwitch(o.id, payload).catch(err => console.error('update switch:', err)));
+        } else if (it.kind === 'element') {
+          promises.push(Api.updateElement(o.id, payload).catch(err => console.error('update element:', err)));
+        }
       }
-
-      // Фигура
-      if (kind && kind.indexOf('shape_') === 0) {
-        var shapeMat = (document.getElementById('shapeMaterial') || {value: 'brick'}).value;
-        createShape(kind, shapeMat, snap(project.width_m / 2), snap(project.height_m / 2));
-        return;
-      }
-
-      // Обычный объект
-      placeObject(kind, snap(project.width_m / 2), snap(project.height_m / 2));
-      canvasHint.textContent = 'Объект добавлен в центр';
-    });
-
-    // --- Drag&drop ---
-    item.addEventListener('dragstart', function (e) {
-      if (!project) { e.preventDefault(); return; }
-      var kind = item.dataset.add;
-      var material = item.dataset.material;
-      e.dataTransfer.setData('text/plain', JSON.stringify({ kind: kind, material: material || null }));
-      e.dataTransfer.effectAllowed = 'copy';
-      item.classList.add('dragging');
-
-      var ghost = document.createElement('div');
-      ghost.className = 'drag-ghost';
-      ghost.id = 'dragGhost';
-      if (window.getEditorIcon) ghost.innerHTML = window.getEditorIcon(kind);
-      document.body.appendChild(ghost);
-    });
-
-    item.addEventListener('dragend', function () {
-      item.classList.remove('dragging');
-      var g = document.getElementById('dragGhost');
-      if (g) g.remove();
-    });
-  });
-
-  document.addEventListener('drag', function (e) {
-    var ghost = document.getElementById('dragGhost');
-    if (ghost && e.clientX && e.clientY) {
-      ghost.style.left = e.clientX + 'px';
-      ghost.style.top = e.clientY + 'px';
     }
-  });
 
-  canvasWrap.addEventListener('dragover', function (e) {
-    if (!project) return;
-    e.preventDefault();
-    e.dataTransfer.dropEffect = 'copy';
-    canvasWrap.classList.add('drag-over');
-    var ghost = document.getElementById('dragGhost');
-    if (ghost && e.clientX && e.clientY) {
-      ghost.style.left = e.clientX + 'px';
-      ghost.style.top = e.clientY + 'px';
-    }
-  });
+    if (state.heatmap) recalcHeatmap();
+    render(); renderProps();
 
-  canvasWrap.addEventListener('dragleave', function (e) {
-    if (e.target === canvasWrap || !canvasWrap.contains(e.relatedTarget)) {
-      canvasWrap.classList.remove('drag-over');
-    }
-  });
-
-  canvasWrap.addEventListener('drop', function (e) {
-    e.preventDefault();
-    canvasWrap.classList.remove('drag-over');
-    var ghost = document.getElementById('dragGhost');
-    if (ghost) ghost.remove();
-    if (!project) return;
-
-    var raw = e.dataTransfer.getData('text/plain');
-    if (!raw) return;
-    var payload;
-    try { payload = JSON.parse(raw); } catch (err) { payload = { kind: raw }; }
-
-    var em = eventToM(e);
-    var x = snap(em.m.x);
-    var y = snap(em.m.y);
-
-    // Стена — создаём прямоугольную комнату
-    if (payload.kind && payload.kind.indexOf('wall_') === 0) {
-      createWallRoom(payload.material || 'concrete', x, y);
-      return;
-    }
-    // Фигура
-    if (payload.kind && payload.kind.indexOf('shape_') === 0) {
-      var shapeMat = (document.getElementById('shapeMaterial') || {value: 'brick'}).value;
-      createShape(payload.kind, shapeMat, x, y);
-      return;
-    }
-    // Обычный объект
-    placeObject(payload.kind, x, y);
-  });
-
-  // ==================== КОМНАТЫ ИЗ 4 СТЕН ====================
-  function createWallRoom(material, x, y) {
-    var w = 4, h = 3;
-    pushHistory('создание комнаты из стен');
-    var p1 = API.post('/api/projects/' + project.id + '/elements', {
-      type: 'wall', material: material,
-      x1: +(x).toFixed(2), y1: +(y).toFixed(2),
-      x2: +(x + w).toFixed(2), y2: +(y).toFixed(2)
-    });
-    var p2 = API.post('/api/projects/' + project.id + '/elements', {
-      type: 'wall', material: material,
-      x1: +(x + w).toFixed(2), y1: +(y).toFixed(2),
-      x2: +(x + w).toFixed(2), y2: +(y + h).toFixed(2)
-    });
-    var p3 = API.post('/api/projects/' + project.id + '/elements', {
-      type: 'wall', material: material,
-      x1: +(x + w).toFixed(2), y1: +(y + h).toFixed(2),
-      x2: +(x).toFixed(2), y2: +(y + h).toFixed(2)
-    });
-    var p4 = API.post('/api/projects/' + project.id + '/elements', {
-      type: 'wall', material: material,
-      x1: +(x).toFixed(2), y1: +(y + h).toFixed(2),
-      x2: +(x).toFixed(2), y2: +(y).toFixed(2)
-    });
-    Promise.all([p1, p2, p3, p4]).then(function () {
-      canvasHint.textContent = 'Создана комната ' + w + '×' + h + ' м из ' + material;
-      loadAll();
-    }).catch(function (err) { alert(err.message); });
+    Promise.all(promises).catch(() => {});
   }
 
-  // ==================== ИНСТРУМЕНТЫ ====================
-  document.querySelectorAll('.tool-btn[data-tool]').forEach(function (b) {
-    b.addEventListener('click', function () {
-      document.querySelectorAll('.tool-btn[data-tool]').forEach(function (x) {
-        x.classList.remove('active');
-      });
-      b.classList.add('active');
-      tool = b.dataset.tool;
-      draft = null;
-      roomPoints = [];
-      layerDraft.innerHTML = '';
-      canvasHint.textContent = ({
-        select: 'Кликните по объекту. Shift+клик — множественное. Рамка — выделить несколько.',
-        wall: 'Клик — начало стены. Клик — конец.',
-        room: 'Клик по углам. Двойной клик — замкнуть.',
-        door: 'Клик-клик — дверь',
-        window: 'Клик-клик — окно',
-        text: 'Кликните, чтобы ввести текст'
-      })[tool] || '';
-    });
-  });
+  /* ============================================================
+     RESIZE СТЕН
+     ============================================================ */
 
-  // ==================== КЛИК ПО ХОЛСТУ ====================
-  svg.addEventListener('click', function (e) {
-    if (!project) return;
-    if (e.target.closest && e.target.closest('[data-kind]')) return;
-    var em = eventToM(e);
-    var x = em.m.x, y = em.m.y;
-
-    if (tool === 'wall' || tool === 'door' || tool === 'window') {
-      if (!draft) {
-        draft = { x1: snap(x), y1: snap(y) };
-        canvasHint.textContent = 'Клик — конец линии';
-        drawDraftLine(em.px, em.py, em.px, em.py);
-        return;
-      }
-      pushHistory('создание ' + tool);
-      var matEl = document.getElementById('wallMaterial');
-      var p = {
-        type: tool === 'wall' ? 'wall' : (tool === 'door' ? 'door' : 'window'),
-        material: tool === 'wall' ? (matEl ? matEl.value : 'concrete') : null,
-        x1: +draft.x1.toFixed(2), y1: +draft.y1.toFixed(2),
-        x2: +snap(x).toFixed(2), y2: +snap(y).toFixed(2)
-      };
-      API.post('/api/projects/' + project.id + '/elements', p).then(function () {
-        draft = null;
-        layerDraft.innerHTML = '';
-        canvasHint.textContent = 'Клик — начало стены';
-        loadAll();
-      }).catch(function (err) { alert(err.message); });
-      return;
-    }
-
-    if (tool === 'room') {
-      roomPoints.push({ x: snap(x), y: snap(y) });
-      drawRoomDraft();
-      canvasHint.textContent = 'Точек: ' + roomPoints.length + '. Двойной клик — замкнуть';
-      return;
-    }
-
-    if (tool === 'text') {
-      var txt = prompt('Введите текст:');
-      if (!txt) return;
-      pushHistory('создание текста');
-      API.post('/api/projects/' + project.id + '/elements', {
-        type: 'text', name: txt,
-        x: +snap(x).toFixed(2), y: +snap(y).toFixed(2)
-      }).then(loadAll);
-      return;
-    }
-
-    if (tool === 'select') {
-      clearSelection();
-      render();
-      renderProps();
-    }
-  });
-
-  svg.addEventListener('dblclick', function (e) {
-    if (tool === 'room' && roomPoints.length >= 3 && project) {
-      pushHistory('создание комнаты');
-      API.post('/api/projects/' + project.id + '/elements', {
-        type: 'room', points_json: JSON.stringify(roomPoints)
-      }).then(function () {
-        roomPoints = [];
-        layerDraft.innerHTML = '';
-        canvasHint.textContent = 'Комната создана';
-        loadAll();
-      });
-      return;
-    }
-    if (tool === 'select' && project && !(e.target.closest && e.target.closest('[data-kind]'))) {
-      var em = eventToM(e);
-      API.post('/api/measurements/' + project.id + '/calculate?x=' +
-               em.m.x.toFixed(2) + '&y=' + em.m.y.toFixed(2), {})
-        .then(function (data) {
-          if (data.best) {
-            canvasHint.textContent = '📍 (' + data.x.toFixed(1) + ', ' +
-              data.y.toFixed(1) + ') · ' + data.best.ap_name + ' · RSSI ' +
-              data.best.rssi + ' дБм · SNR ' + data.snr + ' дБ';
-          } else {
-            canvasHint.textContent = 'Нет покрытия';
-          }
-        }).catch(function () {});
-    }
-  });
-
-  function drawDraftLine(x1, y1, x2, y2) {
-    layerDraft.innerHTML = '';
-    var l = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-    l.setAttribute('x1', x1); l.setAttribute('y1', y1);
-    l.setAttribute('x2', x2); l.setAttribute('y2', y2);
-    l.setAttribute('stroke', '#6c5ce7');
-    l.setAttribute('stroke-width', '2');
-    l.setAttribute('stroke-dasharray', '6 3');
-    layerDraft.appendChild(l);
-  }
-
-  function drawRoomDraft() {
-    layerDraft.innerHTML = '';
-    if (roomPoints.length < 1) return;
-    var pts = roomPoints.map(function (p) {
-      var q = m2px(p.x, p.y); return q.x + ',' + q.y;
-    }).join(' ');
-    var poly = document.createElementNS('http://www.w3.org/2000/svg', 'polyline');
-    poly.setAttribute('points', pts);
-    poly.setAttribute('fill', 'none');
-    poly.setAttribute('stroke', '#6c5ce7');
-    poly.setAttribute('stroke-width', '2');
-    poly.setAttribute('stroke-dasharray', '6 3');
-    layerDraft.appendChild(poly);
-    roomPoints.forEach(function (p) {
-      var q = m2px(p.x, p.y);
-      var c = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-      c.setAttribute('cx', q.x); c.setAttribute('cy', q.y);
-      c.setAttribute('r', 4); c.setAttribute('fill', '#6c5ce7');
-      layerDraft.appendChild(c);
-    });
-  }
-
-  // ==================== МНОЖЕСТВЕННОЕ ВЫДЕЛЕНИЕ ====================
-  svg.addEventListener('mousedown', function (e) {
-    if (tool !== 'select' || !project) return;
-    if (e.target.closest && e.target.closest('[data-kind]')) return;
-    if (e.button !== 0) return;
-
-    var startRect = svg.getBoundingClientRect();
-    var startX = e.clientX - startRect.left;
-    var startY = e.clientY - startRect.top;
-    var moved = false;
+  function startWallResize(e, el, which) {
+    document.body.style.cursor = 'crosshair';
 
     function onMove(ev) {
-      var curX = ev.clientX - startRect.left;
-      var curY = ev.clientY - startRect.top;
-      var dx = Math.abs(curX - startX);
-      var dy = Math.abs(curY - startY);
-      if (dx < 5 && dy < 5) return;
-      moved = true;
-      var left = Math.min(startX, curX);
-      var top = Math.min(startY, curY);
-      var width = Math.abs(curX - startX);
-      var height = Math.abs(curY - startY);
-      selectionRectEl.style.left = left + 'px';
-      selectionRectEl.style.top = top + 'px';
-      selectionRectEl.style.width = width + 'px';
-      selectionRectEl.style.height = height + 'px';
-      selectionRectEl.style.display = 'block';
-      selectionRect = { left: left, top: top, right: left + width, bottom: top + height };
+      const em = eventToM(ev);
+      const nx = snap(em.m.x), ny = snap(em.m.y);
+      if (which === 'start') { el.x1 = nx; el.y1 = ny; }
+      else { el.x2 = nx; el.y2 = ny; }
+      renderWalls();
+      renderMarkers();
     }
 
     function onUp() {
       document.removeEventListener('mousemove', onMove);
       document.removeEventListener('mouseup', onUp);
-      selectionRectEl.style.display = 'none';
-      if (!moved) { selectionRect = null; return; }
+      document.body.style.cursor = '';
+      pushHistory('resize стены');
 
-      var r = svg.getBoundingClientRect();
-      var vb = svg.getAttribute('viewBox').split(/[\s,]+/).map(Number);
-      var s = Math.min(r.width / vb[2], r.height / vb[3]);
-      var rectInSvg = {
-        left: selectionRect.left / s,
-        top: selectionRect.top / s,
-        right: selectionRect.right / s,
-        bottom: selectionRect.bottom / s
+      Api.updateElement(el.id, {
+        type: 'wall', material: el.material,
+        x1: el.x1, y1: el.y1, x2: el.x2, y2: el.y2
+      }).catch(err => console.error('resize wall:', err));
+
+      if (state.heatmap) recalcHeatmap();
+      render();
+    }
+
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  }
+
+  /* ============================================================
+     RESIZE ФИГУР / МЕБЕЛИ
+     ============================================================ */
+
+  function startShapeResize(e, el, mx, my, x1, y1, x2, y2) {
+    const start = {
+      w: el.width  || (el.type === 'furniture' ? 1.5 : 4),
+      h: el.height || (el.type === 'furniture' ? 1   : 3),
+      x: el.x,
+      y: el.y,
+      which: (mx === x1 ? 'w' : mx === x2 ? 'e' : '') +
+             (my === y1 ? 'n' : my === y2 ? 's' : ''),
+      mm: eventToM(e).m
+    };
+
+    function onMove(ev) {
+      const em = eventToM(ev);
+      const dx = em.m.x - start.mm.x;
+      const dy = em.m.y - start.mm.y;
+      let w = start.w, h = start.h, x = start.x, y = start.y;
+
+      if (start.which.includes('e')) w += dx;
+      if (start.which.includes('w')) { w -= dx; x += dx; }
+      if (start.which.includes('s')) h += dy;
+      if (start.which.includes('n')) { h -= dy; y += dy; }
+      if (w < 0.5) w = 0.5;
+      if (h < 0.5) h = 0.5;
+
+      el.width  = +w.toFixed(2);
+      el.height = +h.toFixed(2);
+      el.x = +snap(x).toFixed(2);
+      el.y = +snap(y).toFixed(2);
+      render();
+    }
+
+    function onUp() {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+      pushHistory('resize');
+
+      if (el.type === 'furniture') {
+        Api.updateElement(el.id, {
+          type: 'furniture', subtype: el.subtype,
+          x: el.x, y: el.y,
+          width: el.width, height: el.height,
+          rotation: el.rotation || 0
+        }).catch(err => console.error('resize furniture:', err));
+      } else {
+        Api.updateElement(el.id, {
+          type: el.type, subtype: el.subtype || 'rect',
+          material: el.material || 'brick',
+          x: el.x, y: el.y,
+          width: el.width, height: el.height,
+          points_json: el.points_json
+        }).catch(err => console.error('resize shape:', err));
+      }
+    }
+
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  }
+
+  /* ============================================================
+     СОБЫТИЯ ХОЛСТА: MOUSEMOVE (курсор + черновик стены)
+     ============================================================ */
+
+  svg.addEventListener('mousemove', e => {
+    if (!state.project) return;
+    const em = eventToM(e);
+    state.lastMousePos = { x: snap(em.m.x), y: snap(em.m.y) };
+
+    const cp = document.getElementById('cursorPos');
+    if (cp) {
+      cp.textContent = 'X: ' + em.m.x.toFixed(1) + '  Y: ' + em.m.y.toFixed(1);
+    }
+
+    if (state.tool === 'wall' && state.draft) {
+      const x = snap(em.m.x), y = snap(em.m.y);
+      const a = m2px(state.draft.x1, state.draft.y1);
+      const b = m2px(x, y);
+      let line = L.layerDraft.querySelector('line');
+      if (!line) {
+        line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+        line.setAttribute('x1', a.x);
+        line.setAttribute('y1', a.y);
+        line.setAttribute('stroke', '#2E5EAA');
+        line.setAttribute('stroke-width', '2');
+        line.setAttribute('stroke-dasharray', '6 3');
+        L.layerDraft.appendChild(line);
+      }
+      line.setAttribute('x2', b.x);
+      line.setAttribute('y2', b.y);
+    }
+  });
+
+  /* ============================================================
+     СОБЫТИЯ ХОЛСТА: CLICK (создание объектов)
+     ============================================================ */
+
+  svg.addEventListener('click', e => {
+    if (!state.project) return;
+    if (e.target.closest && e.target.closest('[data-kind]')) return;
+
+    const em = eventToM(e);
+    const x = snap(em.m.x), y = snap(em.m.y);
+
+    /* --- Стена --- */
+    if (state.tool === 'wall') {
+      const mat = state.wallMaterial;
+
+      if (!state.draft) {
+        const a = findAnchor(x, y);
+        state.draft = { x1: a ? a.x : x, y1: a ? a.y : y };
+        L.layerDraft.innerHTML = '';
+
+        const p = m2px(state.draft.x1, state.draft.y1);
+        const dot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+        dot.setAttribute('cx', p.x);
+        dot.setAttribute('cy', p.y);
+        dot.setAttribute('r', 5);
+        dot.setAttribute('fill', '#2E5EAA');
+        dot.setAttribute('stroke', '#fff');
+        dot.setAttribute('stroke-width', '2');
+        L.layerDraft.appendChild(dot);
+
+        const l = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+        l.setAttribute('x1', p.x); l.setAttribute('y1', p.y);
+        l.setAttribute('x2', p.x); l.setAttribute('y2', p.y);
+        l.setAttribute('stroke', '#2E5EAA');
+        l.setAttribute('stroke-width', '2');
+        l.setAttribute('stroke-dasharray', '6 3');
+        L.layerDraft.appendChild(l);
+        return;
+      }
+
+      const a = findAnchor(x, y);
+      const ex = a ? a.x : x;
+      const ey = a ? a.y : y;
+
+      if (Math.hypot(ex - state.draft.x1, ey - state.draft.y1) < 0.3) {
+        state.draft = null;
+        L.layerDraft.innerHTML = '';
+        return;
+      }
+
+      const payload = {
+        type: 'wall',
+        material: mat,
+        x1: +state.draft.x1.toFixed(2),
+        y1: +state.draft.y1.toFixed(2),
+        x2: +ex.toFixed(2),
+        y2: +ey.toFixed(2)
       };
 
-      var picked = [];
-      aps.forEach(function (o) {
-        var p = m2px(o.x, o.y);
-        if (p.x >= rectInSvg.left && p.x <= rectInSvg.right &&
-            p.y >= rectInSvg.top && p.y <= rectInSvg.bottom) {
-          picked.push({ kind: 'ap', id: o.id });
-        }
-      });
-      devices.forEach(function (o) {
-        var p = m2px(o.x, o.y);
-        if (p.x >= rectInSvg.left && p.x <= rectInSvg.right &&
-            p.y >= rectInSvg.top && p.y <= rectInSvg.bottom) {
-          picked.push({ kind: 'device', id: o.id });
-        }
-      });
-      elements.filter(function (el) {
-        return el.type === 'furniture' || el.type === 'text';
-      }).forEach(function (o) {
-        var p = m2px(o.x, o.y);
-        if (p.x >= rectInSvg.left && p.x <= rectInSvg.right &&
-            p.y >= rectInSvg.top && p.y <= rectInSvg.bottom) {
-          picked.push({ kind: 'element', id: o.id });
-        }
-      });
-      switches.forEach(function (o) {
-        if (o.x == null) return;
-        var p = m2px(o.x, o.y);
-        if (p.x >= rectInSvg.left && p.x <= rectInSvg.right &&
-            p.y >= rectInSvg.top && p.y <= rectInSvg.bottom) {
-          picked.push({ kind: 'switch', id: o.id });
-        }
-      });
+      state.draft = null;
+      L.layerDraft.innerHTML = '';
+      pushHistory('стена');
 
-      multiSelected = picked;
-      selected = null;
+      Api.createElement(state.projectId, payload)
+        .then(el => {
+          if (el && el.id) state.elements.push(apiToLocalElement(el));
+          if (state.heatmap) recalcHeatmap();
+          render();
+        })
+        .catch(err => {
+          console.error('create wall:', err);
+          // Откат: создаём локально, чтобы не терять данные
+          state.elements.push(Object.assign({ id: nextId() }, payload));
+          render();
+        });
+      return;
+    }
+
+    /* --- Комната --- */
+    if (state.tool === 'room') {
+      state.roomPoints.push({ x, y });
+      L.layerDraft.innerHTML = '';
+
+      if (state.roomPoints.length > 1) {
+        const poly = document.createElementNS('http://www.w3.org/2000/svg', 'polyline');
+        poly.setAttribute('points', state.roomPoints.map(p => {
+          const q = m2px(p.x, p.y);
+          return q.x + ',' + q.y;
+        }).join(' '));
+        poly.setAttribute('fill', 'none');
+        poly.setAttribute('stroke', '#2E5EAA');
+        poly.setAttribute('stroke-width', '2');
+        poly.setAttribute('stroke-dasharray', '6 3');
+        L.layerDraft.appendChild(poly);
+      }
+      return;
+    }
+
+    /* --- Текст --- */
+    if (state.tool === 'text') {
+      const t = prompt('Введите текст:');
+      if (!t) return;
+      pushHistory('текст');
+
+      Api.createElement(state.projectId, {
+        type: 'text',
+        name: t,
+        x: +x.toFixed(2),
+        y: +y.toFixed(2)
+      }).then(el => {
+        if (el && el.id) state.elements.push(apiToLocalElement(el));
+        render();
+      }).catch(err => {
+        console.error('create text:', err);
+        state.elements.push({ id: nextId(), type: 'text', name: t, x, y });
+        render();
+      });
+      return;
+    }
+
+    /* --- Выделение --- */
+    if (state.tool === 'select') {
+      state.selected = null;
+      state.multiSelected = [];
       render();
       renderProps();
-      if (picked.length) canvasHint.textContent = 'Выделено: ' + picked.length + ' объектов';
-      selectionRect = null;
+    }
+  });
+
+  /* ============================================================
+     СОБЫТИЯ ХОЛСТА: DBLCLICK (замыкание комнаты)
+     ============================================================ */
+
+  svg.addEventListener('dblclick', () => {
+    if (state.tool !== 'room' || state.roomPoints.length < 3) return;
+    pushHistory('комната');
+
+    const payload = {
+      type: 'room',
+      points_json: JSON.stringify(state.roomPoints)
+    };
+    state.roomPoints = [];
+    L.layerDraft.innerHTML = '';
+
+    Api.createElement(state.projectId, payload)
+      .then(el => {
+        if (el && el.id) state.elements.push(apiToLocalElement(el));
+        render();
+      })
+      .catch(err => {
+        console.error('create room:', err);
+        state.elements.push(Object.assign({ id: nextId() }, payload));
+        render();
+      });
+  });
+
+  /* ============================================================
+     СОБЫТИЯ ХОЛСТА: Mousedown (рамка выделения)
+     ============================================================ */
+
+  svg.addEventListener('mousedown', e => {
+    if (state.tool !== 'select' || !state.project) return;
+    if (e.target.closest && e.target.closest('[data-kind]')) return;
+    if (e.button !== 0) return;
+
+    const r0 = svg.getBoundingClientRect();
+    const sx = e.clientX - r0.left;
+    const sy = e.clientY - r0.top;
+    let moved = false;
+
+    function onMove(ev) {
+      const cx = ev.clientX - r0.left;
+      const cy = ev.clientY - r0.top;
+      if (Math.hypot(cx - sx, cy - sy) < 5) return;
+      moved = true;
+      const left = Math.min(sx, cx);
+      const top  = Math.min(sy, cy);
+      const w = Math.abs(cx - sx);
+      const h = Math.abs(cy - sy);
+      selectionRectEl.style.left   = left + 'px';
+      selectionRectEl.style.top    = top + 'px';
+      selectionRectEl.style.width  = w + 'px';
+      selectionRectEl.style.height = h + 'px';
+      selectionRectEl.style.display = 'block';
+    }
+
+    function onUp(ev) {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+      selectionRectEl.style.display = 'none';
+      if (!moved) return;
+
+      const cx = ev.clientX - r0.left;
+      const cy = ev.clientY - r0.top;
+      const p1 = clientToM(Math.min(sx, cx), Math.min(sy, cy));
+      const p2 = clientToM(Math.max(sx, cx), Math.max(sy, cy));
+
+      const picked = [];
+      const check = (arr, kind) => arr.forEach(o => {
+        if (o.x >= p1.x && o.x <= p2.x && o.y >= p1.y && o.y <= p2.y)
+          picked.push({ kind, id: o.id });
+      });
+      check(state.aps, 'ap');
+      check(state.devices, 'device');
+      check(state.switches, 'switch');
+
+      state.multiSelected = picked;
+      state.selected = null;
+      render();
+      renderProps();
     }
 
     document.addEventListener('mousemove', onMove);
     document.addEventListener('mouseup', onUp);
   });
 
-  // ==================== КОПИРОВАНИЕ / ВСТАВКА ====================
-  function copySelected() {
-    var items = multiSelected.length ? multiSelected : (selected ? [selected] : []);
-    if (!items.length) return;
-    clipboard = items.map(function (s) {
-      var obj = getObjectPosition(s.kind, s.id);
-      if (!obj) return null;
-      var copy = JSON.parse(JSON.stringify(obj));
-      delete copy.id; delete copy.project_id; delete copy.created_at;
-      return { kind: s.kind, payload: copy };
-    }).filter(Boolean);
-    canvasHint.textContent = 'Скопировано: ' + clipboard.length;
+  /* ============================================================
+     DRAG&DROP ИЗ ПАЛИТРЫ
+     ============================================================ */
+
+  wrap.addEventListener('dragover', e => {
+    if (!state.project) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'copy';
+  });
+
+  wrap.addEventListener('drop', e => {
+    e.preventDefault();
+    if (!state.project) return;
+
+    const raw = e.dataTransfer.getData('text/plain');
+    if (!raw) return;
+
+    let payload;
+    try { payload = JSON.parse(raw); } catch (err) { return; }
+
+    const em = eventToM(e);
+    const x = snap(em.m.x);
+    const y = snap(em.m.y);
+
+    if (payload.key === 'wall') {
+      state.tool = 'wall';
+      state.wallMaterial = payload.material;
+      setActiveTool('wall');
+      return;
+    }
+    placeObject(payload.key, x, y);
+  });
+
+  /* ============================================================
+     РАЗМЕЩЕНИЕ ОБЪЕКТОВ (с синхронизацией)
+     ============================================================ */
+
+  function placeObject(kind, x, y) {
+    if (!state.project) { alert('Создайте проект'); return; }
+    x = +snap(x).toFixed(2);
+    y = +snap(y).toFixed(2);
+    pushHistory('создание ' + kind);
+
+    /* --- Коммутатор --- */
+    if (kind === 'switch') {
+      const name = 'SW-' + String(++state.swCnt).padStart(2, '0');
+      const payload = {
+        name, model: 'PoE Switch',
+        x, y, total_ports: 24, poe_ports: 24,
+        total_power_budget_w: 370
+      };
+      Api.createSwitch(state.projectId, payload)
+        .then(sw => {
+          if (sw && sw.id) state.switches.push(apiToLocalSwitch(sw));
+          render(); renderCables();
+        })
+        .catch(err => {
+          console.error('create switch:', err);
+          state.switches.push({
+            id: nextId(), name, x, y,
+            totalPorts: 24, poeBudget: 370
+          });
+          render();
+        });
+      return;
+    }
+
+    /* --- AP --- */
+    if (kind === 'ap') {
+      const name = 'AP-' + String(++state.apCnt).padStart(2, '0');
+      const payload = {
+        name, model: 'Generic AP',
+        x, y, tx_power_dbm: 20, antenna_gain: 5,
+        band: '2.4', channel: 6, ssid_type: 'corporate'
+      };
+      Api.createAP(state.projectId, payload)
+        .then(ap => {
+          if (ap && ap.id) state.aps.push(apiToLocalAP(ap));
+          if (state.heatmap) recalcHeatmap();
+          render();
+        })
+        .catch(err => {
+          console.error('create ap:', err);
+          state.aps.push({
+            id: nextId(), name, x, y,
+            power: 20, gain: 5, freq: 2400,
+            band: '2.4', channel: 6
+          });
+          render();
+        });
+      return;
+    }
+
+    /* --- Техника (ПК, ноутбук, принтер, камера, роутер, патч, WLC) --- */
+    if (['pc', 'laptop', 'printer', 'scanner', 'camera',
+         'router', 'patch', 'wlc'].includes(kind)) {
+      const name = (DEVICE_NAMES[kind] || 'DEV-') +
+                   String(++state.devCnt).padStart(2, '0');
+      const payload = {
+        name, type: kind, x, y,
+        band: '5', required_rssi: -65,
+        required_speed: 10, ssid_type: 'corporate'
+      };
+      Api.createDevice(state.projectId, payload)
+        .then(d => {
+          if (d && d.id) state.devices.push(apiToLocalDevice(d));
+          render(); renderCables();
+        })
+        .catch(err => {
+          console.error('create device:', err);
+          state.devices.push({ id: nextId(), name, type: kind, x, y });
+          render();
+        });
+      return;
+    }
+
+    /* --- IoT --- */
+    if (['light', 'sensor', 'lock', 'doorphone', 'ac'].includes(kind)) {
+      const name = (IOT_NAMES[kind] || 'IoT-') +
+                   String(++state.devCnt).padStart(2, '0');
+      const payload = {
+        name, type: kind, x, y,
+        band: '2.4', required_rssi: -70,
+        required_speed: 1, ssid_type: 'iot'
+      };
+      Api.createDevice(state.projectId, payload)
+        .then(d => {
+          if (d && d.id) state.devices.push(apiToLocalDevice(d));
+          render(); renderCables();
+        })
+        .catch(err => {
+          console.error('create iot:', err);
+          state.devices.push({ id: nextId(), name, type: kind, x, y });
+          render();
+        });
+      return;
+    }
+
+    /* --- Мебель --- */
+    if (FURNITURE_TYPES.includes(kind)) {
+      const payload = {
+        type: 'furniture', subtype: kind,
+        x, y, width: 1.5, height: 1, rotation: 0
+      };
+      Api.createElement(state.projectId, payload)
+        .then(el => {
+          if (el && el.id) state.elements.push(apiToLocalElement(el));
+          render();
+        })
+        .catch(err => {
+          console.error('create furniture:', err);
+          state.elements.push(Object.assign({ id: nextId() }, payload));
+          render();
+        });
+      return;
+    }
   }
 
-  function pasteFromClipboard() {
-    if (!clipboard || !clipboard.length || !project) return;
-    pushHistory('вставка');
-    var promises = clipboard.map(function (item) {
-      var p = JSON.parse(JSON.stringify(item.payload));
-      if (p.x != null) p.x = snap(p.x + 1);
-      if (p.y != null) p.y = snap(p.y + 1);
-      var url;
-      if (item.kind === 'ap') url = '/api/projects/' + project.id + '/aps';
-      else if (item.kind === 'device') url = '/api/projects/' + project.id + '/devices';
-      else if (item.kind === 'element') url = '/api/projects/' + project.id + '/elements';
-      else if (item.kind === 'switch') url = '/api/infra/' + project.id + '/switches';
-      else return Promise.resolve();
-      return API.post(url, p);
-    });
-    Promise.all(promises).then(function () {
-      canvasHint.textContent = 'Вставлено: ' + promises.length;
-      loadAll();
+  /* ============================================================
+     ИНСТРУМЕНТЫ
+     ============================================================ */
+
+  function setActiveTool(name) {
+    state.tool = name;
+    document.querySelectorAll('.tool-btn[data-tool]').forEach(b => {
+      b.classList.toggle('active', b.dataset.tool === name);
     });
   }
 
-  function duplicateSelected() { copySelected(); pasteFromClipboard(); }
-
-  // ==================== ПОВОРОТ ====================
-  function rotateSelected() {
-    var items = multiSelected.length ? multiSelected : (selected ? [selected] : []);
-    if (!items.length) return;
-    pushHistory('поворот');
-    var promises = items.map(function (s) {
-      if (s.kind !== 'element') return Promise.resolve();
-      var el = elements.find(function (x) { return x.id === s.id; });
-      if (!el || el.type !== 'furniture') return Promise.resolve();
-      var rot = ((el.rotation || 0) + 15) % 360;
-      var payload = Object.assign({}, el, { rotation: rot });
-      delete payload.id; delete payload.project_id;
-      return API.put('/api/projects/elements/' + el.id, payload);
+  document.querySelectorAll('.tool-btn[data-tool]').forEach(b => {
+    b.addEventListener('click', () => {
+      setActiveTool(b.dataset.tool);
+      state.draft = null;
+      state.roomPoints = [];
+      L.layerDraft.innerHTML = '';
+      canvasHint.textContent = {
+        select: 'Выделение',
+        wall:   'Стена: клик — начало, клик — конец',
+        room:   'Комната: клик по углам, двойной клик — замкнуть',
+        text:   'Текст: кликните на холст'
+      }[b.dataset.tool] || '';
     });
-    Promise.all(promises).then(loadAll);
+  });
+
+  /* ============================================================
+     ИСТОРИЯ
+     ============================================================ */
+
+  function pushHistory(action) {
+    state.history.push({
+      action,
+      snap: {
+        elements: JSON.parse(JSON.stringify(state.elements)),
+        aps:      JSON.parse(JSON.stringify(state.aps)),
+        switches: JSON.parse(JSON.stringify(state.switches)),
+        devices:  JSON.parse(JSON.stringify(state.devices))
+      }
+    });
+    if (state.history.length > 50) state.history.shift();
+    state.redoStack = [];
   }
 
-  // ==================== УДАЛЕНИЕ ====================
-  function deleteSelected() {
-    var items = multiSelected.length ? multiSelected : (selected ? [selected] : []);
-    if (!items.length) return;
-    if (!confirm('Удалить ' + items.length + ' объектов?')) return;
-    pushHistory('удаление');
-    var promises = items.map(function (s) {
-      var url;
-      if (s.kind === 'ap') url = '/api/projects/aps/' + s.id;
-      else if (s.kind === 'device') url = '/api/projects/devices/' + s.id;
-      else if (s.kind === 'element') url = '/api/projects/elements/' + s.id;
-      else if (s.kind === 'switch') url = '/api/infra/switches/' + s.id;
-      else return Promise.resolve();
-      return API.del(url);
-    });
-    Promise.all(promises).then(function () {
-      clearSelection();
-      loadAll();
-      renderProps();
-    });
+  function applySnapshot(s) {
+    state.elements = JSON.parse(JSON.stringify(s.elements));
+    state.aps      = JSON.parse(JSON.stringify(s.aps));
+    state.switches = JSON.parse(JSON.stringify(s.switches));
+    state.devices  = JSON.parse(JSON.stringify(s.devices));
+    state.selected = null;
+    state.multiSelected = [];
+    if (state.heatmap) recalcHeatmap();
+    render();
+    renderProps();
   }
 
-  // ==================== КЛАВИАТУРА ====================
-  document.addEventListener('keydown', function (e) {
-    var tag = (e.target.tagName || '').toLowerCase();
-    if (tag === 'input' || tag === 'textarea' || tag === 'select') return;
+  function undo() {
+    if (!state.history.length) return;
+    const h = state.history.pop();
+    state.redoStack.push(h);
+    applySnapshot(h.snap);
+  }
 
-    var ctrl = e.ctrlKey || e.metaKey;
+  function redo() {
+    if (!state.redoStack.length) return;
+    const h = state.redoStack.pop();
+    state.history.push(h);
+    applySnapshot(h.snap);
+  }
+
+  document.getElementById('undoBtn').addEventListener('click', undo);
+  document.getElementById('redoBtn').addEventListener('click', redo);
+
+  /* ============================================================
+     КЛАВИАТУРА
+     ============================================================ */
+
+  document.addEventListener('keydown', e => {
+    const t = (e.target.tagName || '').toLowerCase();
+    if (['input', 'textarea', 'select'].includes(t)) return;
+
+    const ctrl = e.ctrlKey || e.metaKey;
 
     if (ctrl && e.key.toLowerCase() === 'z' && !e.shiftKey) {
       e.preventDefault(); undo();
     } else if (ctrl && (e.key.toLowerCase() === 'y' ||
-                       (e.key.toLowerCase() === 'z' && e.shiftKey))) {
+               (e.key.toLowerCase() === 'z' && e.shiftKey))) {
       e.preventDefault(); redo();
     } else if (ctrl && e.key.toLowerCase() === 'c') {
-      e.preventDefault(); copySelected();
+      e.preventDefault(); copySel();
     } else if (ctrl && e.key.toLowerCase() === 'v') {
-      e.preventDefault(); pasteFromClipboard();
-    } else if (ctrl && e.key.toLowerCase() === 'd') {
-      e.preventDefault(); duplicateSelected();
-    } else if (e.key.toLowerCase() === 'r' && !ctrl) {
-      e.preventDefault(); rotateSelected();
+      e.preventDefault(); pasteClip();
     } else if (e.key === 'Delete' || e.key === 'Backspace') {
-      e.preventDefault(); deleteSelected();
+      e.preventDefault(); delSel();
     } else if (e.key === 'Escape') {
-      if (draft) {
-        draft = null;
-        layerDraft.innerHTML = '';
-        canvasHint.textContent = 'Рисование отменено';
-      }
-      if (roomPoints.length) {
-        roomPoints = [];
-        layerDraft.innerHTML = '';
-      }
-      clearSelection();
-      render();
-      renderProps();
+      state.draft = null;
+      state.roomPoints = [];
+      L.layerDraft.innerHTML = '';
+      state.selected = null;
+      state.multiSelected = [];
+      render(); renderProps();
     }
   });
 
-  // ==================== СЛОИ ====================
+  /* ============================================================
+     КОПИРОВАНИЕ / ВСТАВКА / УДАЛЕНИЕ
+     ============================================================ */
+
+  function copySel() {
+    const list = state.multiSelected.length
+      ? state.multiSelected
+      : (state.selected ? [state.selected] : []);
+    if (!list.length) return;
+
+    state.clipboard = list.map(s => {
+      const o = getObj(s.kind, s.id);
+      if (!o) return null;
+      const c = JSON.parse(JSON.stringify(o));
+      delete c.id;
+      delete c.project_id;
+      return { kind: s.kind, payload: c };
+    }).filter(Boolean);
+  }
+
+  function pasteClip() {
+    if (!state.clipboard || !state.project) return;
+    pushHistory('вставка');
+
+    state.clipboard.forEach(it => {
+      const p = JSON.parse(JSON.stringify(it.payload));
+      if (p.x != null) p.x = snap(p.x + 1);
+      if (p.y != null) p.y = snap(p.y + 1);
+      if (p.x1 != null) { p.x1 = snap(p.x1 + 1); p.x2 = snap(p.x2 + 1); }
+      if (p.y1 != null) { p.y1 = snap(p.y1 + 1); p.y2 = snap(p.y2 + 1); }
+
+      if (it.kind === 'ap') {
+        Api.createAP(state.projectId, p)
+          .then(ap => { if (ap && ap.id) state.aps.push(apiToLocalAP(ap)); render(); })
+          .catch(() => {});
+      } else if (it.kind === 'switch') {
+        Api.createSwitch(state.projectId, p)
+          .then(sw => { if (sw && sw.id) state.switches.push(apiToLocalSwitch(sw)); render(); })
+          .catch(() => {});
+      } else if (it.kind === 'device') {
+        Api.createDevice(state.projectId, p)
+          .then(d => { if (d && d.id) state.devices.push(apiToLocalDevice(d)); render(); })
+          .catch(() => {});
+      } else if (it.kind === 'element') {
+        Api.createElement(state.projectId, p)
+          .then(el => { if (el && el.id) state.elements.push(apiToLocalElement(el)); render(); })
+          .catch(() => {});
+      }
+    });
+  }
+
+  function delSel() {
+    const list = state.multiSelected.length
+      ? state.multiSelected
+      : (state.selected ? [state.selected] : []);
+    if (!list.length) return;
+    if (!confirm('Удалить ' + list.length + ' объектов?')) return;
+
+    pushHistory('удаление');
+
+    list.forEach(s => {
+      const o = getObj(s.kind, s.id);
+      if (!o) return;
+
+      if (s.kind === 'ap') {
+        state.aps = state.aps.filter(x => x.id !== s.id);
+        Api.deleteAP(s.id).catch(err => console.error('del ap:', err));
+      } else if (s.kind === 'switch') {
+        state.switches = state.switches.filter(x => x.id !== s.id);
+        Api.deleteSwitch(s.id).catch(err => console.error('del switch:', err));
+      } else if (s.kind === 'device') {
+        state.devices = state.devices.filter(x => x.id !== s.id);
+        Api.deleteDevice(s.id).catch(err => console.error('del device:', err));
+      } else if (s.kind === 'element') {
+        state.elements = state.elements.filter(x => x.id !== s.id);
+        Api.deleteElement(s.id).catch(err => console.error('del element:', err));
+      }
+    });
+
+    state.selected = null;
+    state.multiSelected = [];
+    if (state.heatmap) recalcHeatmap();
+    render();
+    renderProps();
+  }
+
+  /* ============================================================
+     ZOOM И ПАНОРАМИРОВАНИЕ
+     ============================================================ */
+
+  function setZoom(z) {
+    state.zoom = Math.max(0.25, Math.min(3, z));
+    const cur = svg.getAttribute('viewBox').split(/[\s,]+/).map(Number);
+    const cx = cur[0] + cur[2] / 2;
+    const cy = cur[1] + cur[3] / 2;
+    const W = cur[2] * (state._prevZoom || 1) / state.zoom;
+    const H = cur[3] * (state._prevZoom || 1) / state.zoom;
+    state._prevZoom = state.zoom;
+    applyViewBox(cx - W / 2, cy - H / 2, W, H);
+    document.getElementById('zoomLabel').textContent =
+      Math.round(state.zoom * 100) + '%';
+    if (state.heatmap) drawHeatmap();
+  }
+
+  document.getElementById('zoomIn').addEventListener('click',
+    () => setZoom(state.zoom + 0.15));
+  document.getElementById('zoomOut').addEventListener('click',
+    () => setZoom(state.zoom - 0.15));
+
+  /* Колесо: обычное — панорама, Ctrl+колесо — зум */
+  svg.addEventListener('wheel', e => {
+    e.preventDefault();
+    if (e.ctrlKey || e.metaKey) {
+      zoomAtPoint(e, e.deltaY > 0 ? -0.12 : 0.12);
+    } else {
+      panBy(-e.deltaX, -e.deltaY);
+    }
+  }, { passive: false });
+
+  /* Панорамирование перетаскиванием средней кнопкой / Alt+ЛКМ */
+  let panState = null;
+
+  svg.addEventListener('mousedown', e => {
+    if (e.button === 1 || (e.button === 0 && e.altKey)) {
+      e.preventDefault();
+      panState = { x: e.clientX, y: e.clientY };
+      document.body.style.cursor = 'grabbing';
+      document.addEventListener('mousemove', onPanMove);
+      document.addEventListener('mouseup', onPanEnd);
+    }
+  });
+
+  function onPanMove(e) {
+    if (!panState) return;
+    panBy(e.clientX - panState.x, e.clientY - panState.y);
+    panState = { x: e.clientX, y: e.clientY };
+  }
+
+  function onPanEnd() {
+    panState = null;
+    document.body.style.cursor = '';
+    document.removeEventListener('mousemove', onPanMove);
+    document.removeEventListener('mouseup', onPanEnd);
+  }
+
+  function panBy(dxPx, dyPx) {
+    const m = svgMetrics();
+    const dxWorld = dxPx / m.scale;
+    const dyWorld = dyPx / m.scale;
+    const cur = svg.getAttribute('viewBox').split(/[\s,]+/).map(Number);
+    applyViewBox(cur[0] + dxWorld, cur[1] + dyWorld, cur[2], cur[3]);
+    if (state.heatmap) drawHeatmap();
+  }
+
+  function zoomAtPoint(e, delta) {
+    const newZoom = Math.max(0.25, Math.min(3, state.zoom + delta));
+    if (newZoom === state.zoom) return;
+
+    const r = svg.getBoundingClientRect();
+    const m = svgMetrics();
+    const mx = (e.clientX - r.left - m.offsetX) / m.scale + m.vx;
+    const my = (e.clientY - r.top  - m.offsetY) / m.scale + m.vy;
+
+    const cur = svg.getAttribute('viewBox').split(/[\s,]+/).map(Number);
+    const factor = newZoom / state.zoom;
+    const newW = cur[2] / factor;
+    const newH = cur[3] / factor;
+    const newX = mx - (mx - cur[0]) / factor;
+    const newY = my - (my - cur[1]) / factor;
+
+    state.zoom = newZoom;
+    applyViewBox(newX, newY, newW, newH);
+    document.getElementById('zoomLabel').textContent =
+      Math.round(newZoom * 100) + '%';
+    if (state.heatmap) drawHeatmap();
+  }
+
+  /* ============================================================
+     СЛОИ (чекбоксы)
+     ============================================================ */
+
   document.getElementById('chkLayerWalls').addEventListener('change', function () {
-    layerWalls.style.display = this.checked ? '' : 'none';
+    L.layerWalls.style.display = this.checked ? '' : 'none';
   });
   document.getElementById('chkLayerFurniture').addEventListener('change', function () {
-    layerFurniture.style.display = this.checked ? '' : 'none';
+    L.layerFurniture.style.display = this.checked ? '' : 'none';
   });
   document.getElementById('chkLayerDevices').addEventListener('change', function () {
-    layerDevices.style.display = this.checked ? '' : 'none';
+    L.layerDevices.style.display = this.checked ? '' : 'none';
+    L.layerIoT.style.display     = this.checked ? '' : 'none';
   });
   document.getElementById('chkLayerCoverage').addEventListener('change', function () {
-    layerCoverage.style.display = this.checked ? '' : 'none';
+    L.layerCoverage.style.display = this.checked ? '' : 'none';
+    heatmapCanvas.style.display =
+      this.checked && state.heatmap ? 'block' : 'none';
   });
-  var cablesChk = document.getElementById('layerCablesChk');
-  if (cablesChk) cablesChk.addEventListener('change', function () { renderCables(); });
+  document.getElementById('chkLayerCables').addEventListener('change', renderCables);
 
-  var wallBlockChk = document.getElementById('chkWallBlockCoverage');
-  if (wallBlockChk) wallBlockChk.addEventListener('change', function () { renderCoverage(); });
-
-  var deviceLinksChk = document.getElementById('chkDeviceLinks');
-  if (deviceLinksChk) deviceLinksChk.addEventListener('change', function () { renderDeviceLinks(); });
-
-  // ==================== ZOOM ====================
-  document.getElementById('zoomIn').addEventListener('click', function () {
-    zoom = Math.min(3, zoom + 0.25);
-    document.getElementById('zoomLabel').textContent = Math.round(zoom * 100) + '%';
-    applyViewBox();
-  });
-  document.getElementById('zoomOut').addEventListener('click', function () {
-    zoom = Math.max(0.25, zoom - 0.25);
-    document.getElementById('zoomLabel').textContent = Math.round(zoom * 100) + '%';
-    applyViewBox();
+  document.getElementById('toggleSnap').addEventListener('click', function () {
+    state.snap = !state.snap;
+    this.textContent = state.snap ? 'Выкл. сетку' : 'Вкл. сетку';
+    document.getElementById('snapStatus').textContent =
+      state.snap ? 'Сетка: 0.5 м' : 'Сетка: выкл';
   });
 
-  // ==================== МОДАЛКА ПРОЕКТА ====================
-  var mask = document.getElementById('modalMask');
-  document.getElementById('newProjectBtn').addEventListener('click', function () {
-    mask.classList.add('show');
-  });
-  document.getElementById('npCancel').addEventListener('click', function () {
-    mask.classList.remove('show');
-  });
-  document.getElementById('npCreate').addEventListener('click', function () {
-    var name = document.getElementById('npName').value || 'Проект';
-    var w = parseFloat(document.getElementById('npWidth').value) || 30;
-    var h = parseFloat(document.getElementById('npHeight').value) || 20;
-    API.post('/api/projects/', { name: name, width_m: w, height_m: h })
-      .then(function (p) {
-        mask.classList.remove('show');
-        loadProjects();
-        setTimeout(function () {
-          projectSelect.value = p.id;
-          selectProject(p);
-        }, 200);
-      }).catch(function (err) { alert(err.message); });
-  });
+  /* ============================================================
+     КНОПКИ ТЕПЛОВЫХ КАРТ
+     ============================================================ */
 
-  // ==================== КАРТЫ / АНАЛИЗ ====================
-  document.getElementById('showHeatmap').addEventListener('click', function () {
-    if (!project) { alert('Выберите проект'); return; }
-    var gs = parseFloat(document.getElementById('gridSize').value) || 0.5;
-    canvasHint.textContent = 'Расчёт покрытия...';
-    API.post('/api/measurements/' + project.id + '/preview', { grid_size_m: gs })
-      .then(function (data) {
-        drawGridOnCanvas(data, rssiToColor);
-        lastHeatmapMode = 'rssi';
-        heatmapCanvas.style.display = 'block';
-        canvasHint.textContent = 'Покрытие: AP ' + (data.aps || []).length +
-          ' · стен ' + (data.walls_count || 0);
-      })
-      .catch(function (err) { alert(err.message); canvasHint.textContent = project.name; });
-  });
+  document.getElementById('btnRssi').addEventListener('click', () => calcHeatmap('rssi'));
+  document.getElementById('btnSnr').addEventListener('click',  () => calcHeatmap('snr'));
 
-  document.getElementById('showSnr').addEventListener('click', function () {
-    if (!project) { alert('Выберите проект'); return; }
-    var gs = parseFloat(document.getElementById('gridSize').value) || 0.5;
-    canvasHint.textContent = 'Расчёт SNR...';
-    API.post('/api/measurements/' + project.id + '/snr', { grid_size_m: gs })
-      .then(function (data) {
-        drawGridOnCanvas(data, snrToColor);
-        lastHeatmapMode = 'snr';
-        heatmapCanvas.style.display = 'block';
-        canvasHint.textContent = 'SNR рассчитан';
-      })
-      .catch(function (err) { alert(err.message); canvasHint.textContent = project.name; });
-  });
+  /* ============================================================
+     ПРАВАЯ ПАНЕЛЬ: СВОЙСТВА
+     ============================================================ */
 
-  document.getElementById('showInterference').addEventListener('click', function () {
-    if (!project) { alert('Выберите проект'); return; }
-    var gs = parseFloat(document.getElementById('gridSize').value) || 0.5;
-    canvasHint.textContent = 'Расчёт интерференции...';
-    API.post('/api/measurements/' + project.id + '/interference', { grid_size_m: gs })
-      .then(function (data) {
-        drawGridOnCanvas(data, interferenceToColor);
-        lastHeatmapMode = 'interference';
-        heatmapCanvas.style.display = 'block';
-        canvasHint.textContent = 'Интерференция рассчитана';
-      })
-      .catch(function (err) { alert(err.message); canvasHint.textContent = project.name; });
-  });
-
-  document.getElementById('hideHeatmap').addEventListener('click', function () {
-    heatmapCanvas.style.display = 'none';
-  });
-
-  document.getElementById('showChannels').addEventListener('click', function () {
-    if (!project) { alert('Выберите проект'); return; }
-    var panel = document.getElementById('channelsPanel');
-    if (!panel) return;
-    panel.style.display = 'block';
-    panel.innerHTML = 'Загрузка...';
-    API.get('/api/measurements/' + project.id + '/channels').then(function (data) {
-      var html = '<div style="font-weight:600;color:#6c5ce7;margin-bottom:6px">📻 Анализ каналов</div>';
-      if (data.by_channel && data.by_channel.length) {
-        html += '<div style="color:#777;margin-bottom:6px">Используемые каналы:</div>';
-        data.by_channel.forEach(function (c) {
-          html += '<div style="display:flex;justify-content:space-between;padding:2px 0;font-size:11px">' +
-            '<span>' + c.band + ' ГГц · канал ' + c.channel + '</span>' +
-            '<span style="color:#6c5ce7;font-weight:600">' + c.count + ' AP</span></div>';
-        });
-      }
-      html += '<div style="margin-top:10px;color:#777">Рекомендации:</div>';
-      (data.recommendations || []).forEach(function (rec) {
-        var color = rec.type === 'error' ? '#e74c3c'
-                  : rec.type === 'warning' ? '#e67e22' : '#00b894';
-        var icon = rec.type === 'error' ? '❌'
-                 : rec.type === 'warning' ? '⚠️' : '✅';
-        html += '<div style="background:#fff;border-left:3px solid ' + color +
-          ';padding:6px 8px;margin:4px 0;border-radius:4px;font-size:11px;line-height:1.4">' +
-          icon + ' ' + rec.text + '</div>';
-      });
-      panel.innerHTML = html;
-    });
-  });
-
-  document.getElementById('showStats').addEventListener('click', function () {
-    if (!project) { alert('Выберите проект'); return; }
-    var modal = document.getElementById('statsModal');
-    var body = document.getElementById('statsBody');
-    modal.classList.add('show');
-    body.innerHTML = 'Загрузка...';
-    API.get('/api/measurements/' + project.id + '/coverage-stats').then(function (s) {
-      var rssiNames = { excellent: 'Отлично (≥ −55)', good: 'Хорошо (−65…−55)',
-                        fair: 'Норма (−75…−65)', poor: 'Слабо (−85…−75)',
-                        dead: 'Мёртвая зона (< −85)' };
-      var snrNames = { excellent: 'Отлично (≥ 40)', good: 'Хорошо (25…40)',
-                       fair: 'Норма (15…25)', poor: 'Плохо (< 15)' };
-      var html = '<h3>RSSI</h3><table class="stats-table">';
-      Object.keys(s.rssi).forEach(function (k) {
-        html += '<tr><td>' + rssiNames[k] + '</td><td>' + s.rssi[k].percent +
-          '%</td><td>' + s.rssi[k].count + '</td></tr>';
-      });
-      html += '</table><h3>SNR</h3><table class="stats-table">';
-      Object.keys(s.snr).forEach(function (k) {
-        html += '<tr><td>' + snrNames[k] + '</td><td>' + s.snr[k].percent +
-          '%</td><td>' + s.snr[k].count + '</td></tr>';
-      });
-      html += '</table>';
-      body.innerHTML = html;
-    });
-  });
-
-  function rssiToColor(rssi) {
-    if (rssi >= -55) return 'rgba(0,184,148,0.55)';
-    if (rssi >= -65) return 'rgba(160,220,120,0.55)';
-    if (rssi >= -72) return 'rgba(253,203,110,0.55)';
-    if (rssi >= -80) return 'rgba(255,159,64,0.55)';
-    if (rssi >= -88) return 'rgba(255,107,107,0.55)';
-    return 'rgba(180,40,40,0.6)';
-  }
-  function snrToColor(snr) {
-    if (snr >= 40) return 'rgba(0,184,148,0.55)';
-    if (snr >= 25) return 'rgba(160,220,120,0.55)';
-    if (snr >= 15) return 'rgba(253,203,110,0.55)';
-    if (snr >= 10) return 'rgba(255,159,64,0.55)';
-    return 'rgba(230,60,60,0.65)';
-  }
-  function interferenceToColor(interf) {
-    if (interf <= -95) return 'rgba(0,0,0,0)';
-    if (interf <= -85) return 'rgba(160,220,120,0.35)';
-    if (interf <= -75) return 'rgba(253,203,110,0.45)';
-    if (interf <= -65) return 'rgba(255,159,64,0.55)';
-    return 'rgba(230,60,60,0.65)';
-  }
-
-  function drawGridOnCanvas(data, colorFn) {
-    if (!data || !data.grid) return;
-    var W = project.width_m * PX_PER_M;
-    var H = project.height_m * PX_PER_M;
-    heatmapCanvas.width = W; heatmapCanvas.height = H;
-    var ctx = heatmapCanvas.getContext('2d');
-    ctx.clearRect(0, 0, W, H);
-    var cw = W / data.cols, ch = H / data.rows;
-    for (var r = 0; r < data.rows; r++) {
-      for (var c = 0; c < data.cols; c++) {
-        ctx.fillStyle = colorFn(data.grid[r][c]);
-        ctx.fillRect(c * cw, r * ch, cw + 0.5, ch + 0.5);
-      }
-    }
-  }
-
-  // ==================== ПОКРЫТИЕ С ОБРЕЗКОЙ ====================
-  function renderCoverage() {
-    layerCoverage.innerHTML = '';
-    var chkCov = document.getElementById('chkLayerCoverage');
-    if (chkCov && !chkCov.checked) return;
-    if (!project) return;
-
-    var chkBlock = document.getElementById('chkWallBlockCoverage');
-    var blockCoverage = chkBlock ? chkBlock.checked : true;
-
-    var walls = elements.filter(function (el) {
-      return el.type === 'wall';
-    }).map(function (el) {
-      return { x1: el.x1, y1: el.y1, x2: el.x2, y2: el.y2, material: el.material };
-    });
-
-    aps.forEach(function (ap) {
-      var p = m2px(ap.x, ap.y);
-      var r_m = 5 + (ap.tx_power_dbm - 10) * 0.8;
-      if (ap.band === '2.4') r_m *= 1.4;
-      if (ap.band === '6') r_m *= 0.8;
-      var r_px = r_m * PX_PER_M;
-
-      if (blockCoverage && walls.length > 0) {
-        var rays = 72;
-        var points = [];
-        for (var i = 0; i < rays; i++) {
-          var angle = (i / rays) * Math.PI * 2;
-          var dxr = Math.cos(angle);
-          var dyr = Math.sin(angle);
-          var hitDist = r_m;
-          for (var w = 0; w < walls.length; w++) {
-            var wall = walls[w];
-            var d = rayWallDistance(ap.x, ap.y,
-              ap.x + dxr * r_m, ap.y + dyr * r_m,
-              wall.x1, wall.y1, wall.x2, wall.y2);
-            if (d !== null && d < hitDist) hitDist = d;
-          }
-          var px = ap.x + dxr * hitDist;
-          var py = ap.y + dyr * hitDist;
-          var q = m2px(px, py);
-          points.push(q.x + ',' + q.y);
-        }
-
-        var poly = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
-        poly.setAttribute('points', points.join(' '));
-        poly.setAttribute('fill', 'rgba(108, 92, 231, 0.15)');
-        poly.setAttribute('stroke', 'rgba(108, 92, 231, 0.5)');
-        poly.setAttribute('stroke-width', '1');
-        poly.setAttribute('stroke-dasharray', '4 4');
-        poly.setAttribute('pointer-events', 'none');
-        layerCoverage.appendChild(poly);
-
-        var defs = svg.querySelector('defs');
-        var clipId = 'clip_ap_' + ap.id;
-        var oldClip = defs.querySelector('#' + clipId);
-        if (oldClip) oldClip.remove();
-        var clip = document.createElementNS('http://www.w3.org/2000/svg', 'clipPath');
-        clip.setAttribute('id', clipId);
-        var clipPoly = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
-        clipPoly.setAttribute('points', points.join(' '));
-        clip.appendChild(clipPoly);
-        defs.appendChild(clip);
-
-        var gid = 'grad_ap_' + ap.id;
-        var old = defs.querySelector('#' + gid);
-        if (old) old.remove();
-        var grad = document.createElementNS('http://www.w3.org/2000/svg', 'radialGradient');
-        grad.setAttribute('id', gid);
-        var s1 = document.createElementNS('http://www.w3.org/2000/svg', 'stop');
-        s1.setAttribute('offset', '0%'); s1.setAttribute('stop-color', '#00b894'); s1.setAttribute('stop-opacity', '0.55');
-        var s2 = document.createElementNS('http://www.w3.org/2000/svg', 'stop');
-        s2.setAttribute('offset', '55%'); s2.setAttribute('stop-color', '#fdcb6e'); s2.setAttribute('stop-opacity', '0.35');
-        var s3 = document.createElementNS('http://www.w3.org/2000/svg', 'stop');
-        s3.setAttribute('offset', '100%'); s3.setAttribute('stop-color', '#ff6b6b'); s3.setAttribute('stop-opacity', '0.15');
-        grad.appendChild(s1); grad.appendChild(s2); grad.appendChild(s3);
-        defs.appendChild(grad);
-
-        var c = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-        c.setAttribute('cx', p.x); c.setAttribute('cy', p.y);
-        c.setAttribute('r', r_px);
-        c.setAttribute('fill', 'url(#' + gid + ')');
-        c.setAttribute('clip-path', 'url(#' + clipId + ')');
-        c.setAttribute('pointer-events', 'none');
-        layerCoverage.appendChild(c);
-      } else {
-        var defs = svg.querySelector('defs');
-        var gid = 'grad_ap_' + ap.id;
-        var old = defs.querySelector('#' + gid);
-        if (old) old.remove();
-        var grad = document.createElementNS('http://www.w3.org/2000/svg', 'radialGradient');
-        grad.setAttribute('id', gid);
-        var s1 = document.createElementNS('http://www.w3.org/2000/svg', 'stop');
-        s1.setAttribute('offset', '0%'); s1.setAttribute('stop-color', '#00b894'); s1.setAttribute('stop-opacity', '0.35');
-        var s2 = document.createElementNS('http://www.w3.org/2000/svg', 'stop');
-        s2.setAttribute('offset', '60%'); s2.setAttribute('stop-color', '#fdcb6e'); s2.setAttribute('stop-opacity', '0.18');
-        var s3 = document.createElementNS('http://www.w3.org/2000/svg', 'stop');
-        s3.setAttribute('offset', '100%'); s3.setAttribute('stop-color', '#ff6b6b'); s3.setAttribute('stop-opacity', '0');
-        grad.appendChild(s1); grad.appendChild(s2); grad.appendChild(s3);
-        defs.appendChild(grad);
-        var c2 = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-        c2.setAttribute('cx', p.x); c2.setAttribute('cy', p.y);
-        c2.setAttribute('r', r_px);
-        c2.setAttribute('fill', 'url(#' + gid + ')');
-        c2.setAttribute('pointer-events', 'none');
-        layerCoverage.appendChild(c2);
-      }
-    });
-  }
-
-  function rayWallDistance(ax, ay, bx, by, x1, y1, x2, y2) {
-    var r_px = bx - ax, r_py = by - ay;
-    var s_px = x2 - x1, s_py = y2 - y1;
-    var denom = r_px * s_py - r_py * s_px;
-    if (Math.abs(denom) < 1e-10) return null;
-    var t = ((x1 - ax) * s_py - (y1 - ay) * s_px) / denom;
-    var u = ((x1 - ax) * r_py - (y1 - ay) * r_px) / denom;
-    if (t < 0 || t > 1 || u < 0 || u > 1) return null;
-    return t * Math.sqrt(r_px * r_px + r_py * r_py);
-  }
-
-  // ==================== СВЯЗИ УСТРОЙСТВ ====================
-  function renderDeviceLinks() {
-    layerDeviceLinks.innerHTML = '';
-    var chk = document.getElementById('chkDeviceLinks');
-    if (chk && !chk.checked) return;
-    deviceLinks.forEach(function (link) {
-      if (link.from_x == null || link.to_x == null) return;
-      var a = m2px(link.from_x, link.from_y);
-      var b = m2px(link.to_x, link.to_y);
-      var line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-      line.setAttribute('x1', a.x); line.setAttribute('y1', a.y);
-      line.setAttribute('x2', b.x); line.setAttribute('y2', b.y);
-      line.setAttribute('stroke', link.exceeds_limit ? '#e74c3c' : '#10b981');
-      line.setAttribute('stroke-width', '1.5');
-      line.setAttribute('stroke-dasharray', '4 3');
-      line.setAttribute('opacity', '0.7');
-      layerDeviceLinks.appendChild(line);
-
-      var dot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-      dot.setAttribute('cx', (a.x + b.x) / 2);
-      dot.setAttribute('cy', (a.y + b.y) / 2);
-      dot.setAttribute('r', '2');
-      dot.setAttribute('fill', link.exceeds_limit ? '#e74c3c' : '#10b981');
-      layerDeviceLinks.appendChild(dot);
-    });
-  }
-
-  // ==================== КАБЕЛИ СКС ====================
-  function renderCables() {
-    layerCables.innerHTML = '';
-    var chk = document.getElementById('layerCablesChk');
-    if (chk && !chk.checked) return;
-    cableLinks.forEach(function (link) {
-      var a = m2px(link.from.x, link.from.y);
-      var b = m2px(link.to.x, link.to.y);
-      var midX = (a.x + b.x) / 2;
-      var midY = (a.y + b.y) / 2;
-      var dx = b.x - a.x, dy = b.y - a.y;
-      var len = Math.sqrt(dx * dx + dy * dy) || 1;
-      var ctrlX = midX - dy / len * len * 0.15;
-      var ctrlY = midY + dx / len * len * 0.15;
-
-      var path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-      path.setAttribute('d', 'M ' + a.x + ' ' + a.y +
-                             ' Q ' + ctrlX + ' ' + ctrlY + ' ' + b.x + ' ' + b.y);
-      path.setAttribute('fill', 'none');
-      path.setAttribute('stroke', link.length_m > 100 ? '#e74c3c' : '#95a5a6');
-      path.setAttribute('stroke-width', '2');
-      path.setAttribute('stroke-dasharray', '6 4');
-      path.setAttribute('opacity', '0.7');
-      layerCables.appendChild(path);
-
-      var label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-      label.setAttribute('x', (a.x + ctrlX + b.x) / 3);
-      label.setAttribute('y', (a.y + ctrlY + b.y) / 3 - 4);
-      label.setAttribute('font-size', '9');
-      label.setAttribute('fill', link.length_m > 100 ? '#c0392b' : '#7f8c8d');
-      label.setAttribute('text-anchor', 'middle');
-      label.setAttribute('font-weight', '600');
-      label.textContent = link.length_m + ' м';
-      layerCables.appendChild(label);
-    });
-  }
-
-  // ==================== ПРАВАЯ ПАНЕЛЬ ====================
   function renderProps() {
-    if (multiSelected.length > 1) {
+    if (!propsPanel) return;
+
+    if (state.multiSelected.length > 1) {
       propsPanel.innerHTML =
-        '<div class="props-empty"><div class="big">🎯</div>' +
-        '<div>Выделено <strong>' + multiSelected.length + '</strong> объектов</div>' +
-        '<div style="margin-top:12px;font-size:11px;color:#999">' +
-        'R — повернуть · Ctrl+D — дубль<br>Delete — удалить · Esc — снять</div></div>';
+        '<div class="props-empty">' +
+          '<div class="props-empty-icon">🎯</div>' +
+          '<div>Выделено <b>' + state.multiSelected.length + '</b> объектов</div>' +
+        '</div>';
       return;
     }
-    if (!selected) {
+
+    if (!state.selected) {
       propsPanel.innerHTML =
-        '<div class="props-empty"><div class="big">🎨</div>' +
-        '<div>Выберите объект на холсте</div></div>';
+        '<div class="props-empty">' +
+          '<div class="props-empty-icon">🎨</div>' +
+          '<div>Выберите объект на чертеже</div>' +
+        '</div>';
       return;
     }
-    if (selected.kind === 'ap') propsAP();
-    else if (selected.kind === 'device') propsDevice();
-    else if (selected.kind === 'element') propsElement();
-    else if (selected.kind === 'switch') propsSwitch();
+
+    if (state.selected.kind === 'ap')      return propsAP();
+    if (state.selected.kind === 'device')  return propsDevice();
+    if (state.selected.kind === 'element') return propsElement();
+    if (state.selected.kind === 'switch')  return propsSwitch();
   }
 
   function propsAP() {
-    var ap = aps.find(function (x) { return x.id === selected.id; });
+    const ap = state.aps.find(x => x.id === state.selected.id);
     if (!ap) return;
-    propsPanel.innerHTML =
-      head('📡', ap.name, ap.model || 'Точка доступа') +
-      sect('Параметры',
-        row('Имя', '<input id="p_name" value="' + esc(ap.name) + '">') +
-        row('Модель', '<select id="p_model"><option value="">— выберите —</option></select>') +
-        row('Мощность, dBm', '<input id="p_tx" type="number" value="' + ap.tx_power_dbm + '">') +
-        row('Усиление, dBi', '<input id="p_gain" type="number" value="' + ap.antenna_gain + '">') +
-        row('Частота', '<select id="p_band">' +
-          '<option value="2.4"' + (ap.band === '2.4' ? ' selected' : '') + '>2.4 ГГц</option>' +
-          '<option value="5"' + (ap.band === '5' ? ' selected' : '') + '>5 ГГц</option>' +
-          '<option value="6"' + (ap.band === '6' ? ' selected' : '') + '>6 ГГц</option>' +
-        '</select>') +
-        row('Канал', '<input id="p_ch" type="number" value="' + ap.channel + '">')
-      ) +
-      sect('SSID',
-        row('Тип', '<select id="p_ssid">' +
-          '<option value="corporate"' + (ap.ssid_type === 'corporate' ? ' selected' : '') + '>Корпоративный</option>' +
-          '<option value="guest"' + (ap.ssid_type === 'guest' ? ' selected' : '') + '>Гостевой</option>' +
-          '<option value="iot"' + (ap.ssid_type === 'iot' ? ' selected' : '') + '>IoT</option>' +
-        '</select>')
-      ) +
-      sect('Позиция',
-        '<div style="font-size:12px;color:#777">X: ' + ap.x.toFixed(2) +
-        ' м, Y: ' + ap.y.toFixed(2) + ' м</div>'
-      ) +
-      sect('', '<button class="btn-primary" id="saveBtn">Сохранить</button>' +
-               '<button class="btn-danger" id="delBtn">Удалить</button>');
 
-    API.get('/api/ap-models/').then(function (catalog) {
-      var sel = document.getElementById('p_model');
+    propsPanel.innerHTML =
+      '<div class="props-header">' +
+        '<div class="icon">📡</div>' +
+        '<div>' +
+          '<div class="title">' + esc(ap.name) + '</div>' +
+          '<div class="subtitle">Точка доступа</div>' +
+        '</div>' +
+      '</div>' +
+
+      '<div class="props-section"><h4>Параметры</h4>' +
+        '<div class="props-row"><label>Имя</label>' +
+          '<input id="p_name" value="' + esc(ap.name) + '"></div>' +
+        '<div class="props-row"><label>Модель</label>' +
+          '<select id="p_model"><option value="">— загрузка —</option></select></div>' +
+        '<div class="props-row"><label>Мощность, dBm</label>' +
+          '<input id="p_tx" type="number" value="' + ap.power + '" min="5" max="30"></div>' +
+        '<div class="props-row"><label>Усиление, dBi</label>' +
+          '<input id="p_gain" type="number" value="' + ap.gain + '" min="0" max="15"></div>' +
+        '<div class="props-row"><label>Частота</label>' +
+          '<select id="p_freq">' +
+            '<option value="2400"' + (ap.freq === 2400 ? ' selected' : '') + '>2.4 ГГц</option>' +
+            '<option value="5000"' + (ap.freq === 5000 ? ' selected' : '') + '>5 ГГц</option>' +
+            '<option value="6000"' + (ap.freq === 6000 ? ' selected' : '') + '>6 ГГц</option>' +
+          '</select></div>' +
+        '<div class="props-row"><label>Канал</label>' +
+          '<input id="p_ch" type="number" value="' + ap.channel + '"></div>' +
+      '</div>' +
+
+      '<div class="props-section">' +
+        '<button class="btn-block" id="delBtn">🗑 Удалить</button>' +
+      '</div>';
+
+    // Загрузка каталога моделей AP
+    Api.listApModels().then(models => {
+      const sel = document.getElementById('p_model');
       if (!sel) return;
-      catalog.forEach(function (item) {
-        var opt = document.createElement('option');
-        opt.value = item.vendor + ' ' + item.model;
-        opt.textContent = item.vendor + ' · ' + item.model + ' (' + item.standard + ')';
-        opt.dataset.tx = item.tx_power_dbm;
-        opt.dataset.gain = item.antenna_gain;
-        opt.dataset.band = item.band;
+      sel.innerHTML = '<option value="">— выбрать —</option>';
+      models.forEach(m => {
+        const opt = document.createElement('option');
+        opt.value = m.model;
+        opt.textContent = m.vendor + ' ' + m.model;
+        if (ap.model === m.model) opt.selected = true;
+        opt.dataset.power = m.tx_power_dbm;
+        opt.dataset.gain = m.antenna_gain;
+        opt.dataset.band = m.band;
         sel.appendChild(opt);
       });
-      for (var i = 0; i < sel.options.length; i++) {
-        if (sel.options[i].value === (ap.model || '')) { sel.selectedIndex = i; break; }
-      }
-      sel.addEventListener('change', function () {
-        var opt = sel.options[sel.selectedIndex];
-        if (!opt.dataset.tx) return;
-        document.getElementById('p_tx').value = opt.dataset.tx;
-        document.getElementById('p_gain').value = opt.dataset.gain;
-        var b = (opt.dataset.band || '').split('/').pop();
-        if (b === '2.4' || b === '5' || b === '6') document.getElementById('p_band').value = b;
+
+      sel.addEventListener('change', () => {
+        const opt = sel.options[sel.selectedIndex];
+        if (!opt || !opt.dataset.power) return;
+        ap.model = opt.value;
+        ap.power = parseFloat(opt.dataset.power) || ap.power;
+        ap.gain  = parseFloat(opt.dataset.gain) || ap.gain;
+        // Автоматически подставить band
+        if (opt.dataset.band.includes('5')) ap.freq = 5000;
+        else if (opt.dataset.band.includes('2.4')) ap.freq = 2400;
+        saveAP();
+        render();
+        if (state.heatmap) recalcHeatmap();
+        renderProps();
+      });
+    }).catch(() => {});
+
+    ['p_name', 'p_tx', 'p_gain', 'p_freq', 'p_ch'].forEach(id => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.addEventListener('change', () => {
+        ap.name   = document.getElementById('p_name').value;
+        ap.power  = parseFloat(document.getElementById('p_tx').value) || 20;
+        ap.gain   = parseFloat(document.getElementById('p_gain').value) || 5;
+        ap.freq   = parseInt(document.getElementById('p_freq').value, 10);
+        ap.channel = parseInt(document.getElementById('p_ch').value, 10) || 6;
+        saveAP();
+        render();
+        if (state.heatmap) recalcHeatmap();
       });
     });
 
-    bindSaveDelete(function () {
-      return { name: v('p_name'), model: v('p_model'), x: ap.x, y: ap.y,
-        tx_power_dbm: parseFloat(v('p_tx')), antenna_gain: parseFloat(v('p_gain')),
-        band: v('p_band'), channel: parseInt(v('p_ch'), 10), ssid_type: v('p_ssid') };
-    }, '/api/projects/aps/' + ap.id);
-  }
+    document.getElementById('delBtn').addEventListener('click', () => {
+      Api.deleteAP(ap.id).catch(() => {});
+      state.aps = state.aps.filter(x => x.id !== ap.id);
+      state.selected = null;
+      if (state.heatmap) recalcHeatmap();
+      render(); renderProps();
+    });
 
-  function propsDevice() {
-    var d = devices.find(function (x) { return x.id === selected.id; });
-    if (!d) return;
-    propsPanel.innerHTML =
-      head(DEV_ICON[d.type] || '📦', d.name, 'Устройство · ' + d.type) +
-      sect('Параметры',
-        row('Имя', '<input id="d_name" value="' + esc(d.name) + '">') +
-        row('Требуемый RSSI', '<input id="d_rssi" type="number" value="' + d.required_rssi + '">') +
-        row('Скорость, Мбит/с', '<input id="d_speed" type="number" value="' + d.required_speed + '">')
-      ) +
-      sect('Позиция',
-        '<div style="font-size:12px;color:#777">X: ' + d.x.toFixed(2) +
-        ' м, Y: ' + d.y.toFixed(2) + ' м</div>'
-      ) +
-      sect('', '<button class="btn-primary" id="saveBtn">Сохранить</button>' +
-               '<button class="btn-danger" id="delBtn">Удалить</button>');
-    bindSaveDelete(function () {
-      return { name: v('d_name'), type: d.type, x: d.x, y: d.y, band: d.band,
-        required_rssi: parseFloat(v('d_rssi')), required_speed: parseFloat(v('d_speed')),
-        ssid_type: d.ssid_type };
-    }, '/api/projects/devices/' + d.id);
+    function saveAP() {
+      Api.updateAP(ap.id, {
+        name: ap.name,
+        model: ap.model || 'Generic AP',
+        x: ap.x, y: ap.y,
+        tx_power_dbm: ap.power,
+        antenna_gain: ap.gain,
+        band: ap.freq === 2400 ? '2.4' : ap.freq === 6000 ? '6' : '5',
+        channel: ap.channel,
+        ssid_type: 'corporate'
+      }).catch(err => console.error('save ap:', err));
+    }
   }
 
   function propsSwitch() {
-    var sw = switches.find(function (x) { return x.id === selected.id; });
+    const sw = state.switches.find(x => x.id === state.selected.id);
     if (!sw) return;
-    propsPanel.innerHTML =
-      head('🔀', sw.name, sw.model || 'PoE-коммутатор') +
-      sect('Параметры',
-        row('Имя', '<input id="sw_name2" value="' + esc(sw.name) + '">') +
-        row('Модель', '<input id="sw_model2" value="' + esc(sw.model || '') + '">') +
-        row('Расположение', '<input id="sw_loc2" value="' + esc(sw.location || '') + '">') +
-        row('PoE-бюджет, Вт', '<input id="sw_budget2" type="number" value="' + sw.total_power_budget_w + '">') +
-        row('Всего портов', '<input id="sw_ports2" type="number" value="' + sw.total_ports + '">') +
-        row('PoE-портов', '<input id="sw_poe2" type="number" value="' + sw.poe_ports + '">')
-      ) +
-      sect('Позиция',
-        '<div style="font-size:12px;color:#777">X: ' + (sw.x || 0).toFixed(2) +
-        ' м, Y: ' + (sw.y || 0).toFixed(2) + ' м</div>'
-      ) +
-      sect('', '<button class="btn-primary" id="saveBtn">Сохранить</button>' +
-               '<button class="btn-danger" id="delBtn">Удалить</button>');
 
-    document.getElementById('saveBtn').addEventListener('click', function () {
-      API.put('/api/infra/switches/' + sw.id, {
-        name: v('sw_name2'), model: v('sw_model2'), location: v('sw_loc2'),
-        x: sw.x, y: sw.y,
-        total_power_budget_w: parseFloat(v('sw_budget2')) || 370,
-        total_ports: parseInt(v('sw_ports2'), 10) || 24,
-        poe_ports: parseInt(v('sw_poe2'), 10) || 24
-      }).then(loadAll);
-    });
-    document.getElementById('delBtn').addEventListener('click', function () {
-      if (!confirm('Удалить коммутатор ' + sw.name + '?')) return;
-      API.del('/api/infra/switches/' + sw.id).then(function () {
-        selected = null; loadAll(); renderProps();
+    propsPanel.innerHTML =
+      '<div class="props-header">' +
+        '<div class="icon">🔀</div>' +
+        '<div>' +
+          '<div class="title">' + esc(sw.name) + '</div>' +
+          '<div class="subtitle">PoE-коммутатор</div>' +
+        '</div>' +
+      '</div>' +
+
+      '<div class="props-section"><h4>Параметры</h4>' +
+        '<div class="props-row"><label>Имя</label>' +
+          '<input id="s_name" value="' + esc(sw.name) + '"></div>' +
+        '<div class="props-row"><label>Портов</label>' +
+          '<input id="s_ports" type="number" value="' + sw.totalPorts + '"></div>' +
+        '<div class="props-row"><label>PoE, Вт</label>' +
+          '<input id="s_poe" type="number" value="' + sw.poeBudget + '"></div>' +
+      '</div>' +
+
+      '<div class="props-section">' +
+        '<button class="btn-block" id="delBtn">🗑 Удалить</button>' +
+      '</div>';
+
+    ['s_name', 's_ports', 's_poe'].forEach(id => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.addEventListener('change', () => {
+        sw.name      = document.getElementById('s_name').value;
+        sw.totalPorts = parseInt(document.getElementById('s_ports').value, 10) || 24;
+        sw.poeBudget  = parseFloat(document.getElementById('s_poe').value) || 370;
+
+        Api.updateSwitch(sw.id, {
+          name: sw.name,
+          model: sw.model || 'PoE Switch',
+          x: sw.x, y: sw.y,
+          total_ports: sw.totalPorts,
+          poe_ports: sw.totalPorts,
+          total_power_budget_w: sw.poeBudget
+        }).catch(err => console.error('save switch:', err));
+
+        render();
       });
+    });
+
+    document.getElementById('delBtn').addEventListener('click', () => {
+      Api.deleteSwitch(sw.id).catch(() => {});
+      state.switches = state.switches.filter(x => x.id !== sw.id);
+      state.selected = null;
+      render(); renderProps();
+    });
+  }
+
+  function propsDevice() {
+    const d = state.devices.find(x => x.id === state.selected.id);
+    if (!d) return;
+
+    let linkInfo = '';
+    if (WIRELESS_TYPES.includes(d.type) && state.aps.length) {
+      let best = null, bd = Infinity;
+      for (const ap of state.aps) {
+        const dist = Math.hypot(d.x - ap.x, d.y - ap.y);
+        if (dist < bd) { bd = dist; best = ap; }
+      }
+      if (best) {
+        const rssi = -30 - 20 * Math.log10(Math.max(bd, 0.5));
+        linkInfo =
+          '<div class="props-section"><h4>Подключение</h4>' +
+            '<div class="props-row"><label>AP</label><span>' + esc(best.name) + '</span></div>' +
+            '<div class="props-row"><label>Расстояние</label><span>' + bd.toFixed(1) + ' м</span></div>' +
+            '<div class="props-row"><label>~RSSI</label><span>' + rssi.toFixed(0) + ' dBm</span></div>' +
+          '</div>';
+      }
+    }
+
+    propsPanel.innerHTML =
+      '<div class="props-header">' +
+        '<div class="icon">💻</div>' +
+        '<div>' +
+          '<div class="title">' + esc(d.name) + '</div>' +
+          '<div class="subtitle">' + d.type + '</div>' +
+        '</div>' +
+      '</div>' +
+
+      '<div class="props-section">' +
+        '<div class="props-row"><label>Имя</label>' +
+          '<input id="d_name" value="' + esc(d.name) + '"></div>' +
+      '</div>' +
+
+      linkInfo +
+
+      '<div class="props-section">' +
+        '<button class="btn-block" id="delBtn">🗑 Удалить</button>' +
+      '</div>';
+
+    document.getElementById('d_name').addEventListener('change', () => {
+      d.name = document.getElementById('d_name').value;
+      Api.updateDevice(d.id, {
+        name: d.name, type: d.type, x: d.x, y: d.y,
+        band: d.band || '5',
+        required_rssi: d.required_rssi || -65,
+        required_speed: d.required_speed || 10,
+        ssid_type: d.ssid_type || 'corporate'
+      }).catch(err => console.error('save device:', err));
+      render();
+    });
+
+    document.getElementById('delBtn').addEventListener('click', () => {
+      Api.deleteDevice(d.id).catch(() => {});
+      state.devices = state.devices.filter(x => x.id !== d.id);
+      state.selected = null;
+      render(); renderProps();
     });
   }
 
   function propsElement() {
-    var el = elements.find(function (x) { return x.id === selected.id; });
+    const el = state.elements.find(x => x.id === state.selected.id);
     if (!el) return;
 
+    /* --- Стена --- */
     if (el.type === 'wall') {
-      var names = { concrete: 'Бетон', brick: 'Кирпич', drywall: 'Гипсокартон', wood: 'Дерево', glass: 'Стекло' };
-      var len = Math.hypot(el.x2 - el.x1, el.y2 - el.y1).toFixed(2);
+      const mat = el.material || 'concrete';
+      const lenM = Math.hypot(el.x2 - el.x1, el.y2 - el.y1).toFixed(2);
+
       propsPanel.innerHTML =
-        head('🧱', 'Стена', names[el.material] || el.material) +
-        sect('Свойства',
-          row('Материал', '<select id="e_mat">' +
-            Object.keys(names).map(function (k) {
-              return '<option value="' + k + '"' + (el.material === k ? ' selected' : '') + '>' + names[k] + '</option>';
-            }).join('') + '</select>') +
-          '<div style="font-size:12px;color:#777;margin-top:6px">Длина: ' + len + ' м</div>'
-        ) +
-        sect('', '<button class="btn-primary" id="saveBtn">Сохранить</button>' +
-                 '<button class="btn-danger" id="delBtn">Удалить</button>');
-      bindSaveDelete(function () {
-        return { type: 'wall', material: v('e_mat'),
-          x1: el.x1, y1: el.y1, x2: el.x2, y2: el.y2 };
-      }, '/api/projects/elements/' + el.id);
-      return;
-    }
-
-    if (el.type === 'shape') {
-      var shapeNames = { concrete: 'Бетон', brick: 'Кирпич', drywall: 'Гипсокартон', wood: 'Дерево', glass: 'Стекло' };
-      var shapeTypeNames = { rect: 'Прямоугольник', ellipse: 'Эллипс', triangle: 'Треугольник' };
-      propsPanel.innerHTML =
-        head('⬛', shapeTypeNames[el.subtype] || 'Фигура', shapeNames[el.material] || el.material) +
-        sect('Свойства',
-          row('Материал', '<select id="e_mat">' +
-            Object.keys(shapeNames).map(function (k) {
-              return '<option value="' + k + '"' + (el.material === k ? ' selected' : '') + '>' + shapeNames[k] + '</option>';
-            }).join('') + '</select>') +
-          row('Ширина, м', '<input id="e_w" type="number" step="0.5" value="' + (el.width || 4) + '">') +
-          row('Высота, м', '<input id="e_h" type="number" step="0.5" value="' + (el.height || 3) + '">')
-        ) +
-        sect('Позиция',
-          '<div style="font-size:12px;color:#777">X: ' + el.x.toFixed(2) +
-          ' м, Y: ' + el.y.toFixed(2) + ' м</div>'
-        ) +
-        sect('', '<button class="btn-primary" id="saveBtn">Сохранить</button>' +
-                 '<button class="btn-danger" id="delBtn">Удалить</button>');
-      bindSaveDelete(function () {
-        return { type: 'shape', subtype: el.subtype, material: v('e_mat'),
-          x: el.x, y: el.y,
-          width: parseFloat(v('e_w')) || 4,
-          height: parseFloat(v('e_h')) || 3 };
-      }, '/api/projects/elements/' + el.id);
-      return;
-    }
-
-    if (el.type === 'furniture' || el.type === 'text') {
-      propsPanel.innerHTML =
-        head(el.type === 'text' ? '🅰' : (FURN_ICON[el.subtype] || '📦'),
-             el.type === 'furniture' ? 'Мебель' : 'Текст', '') +
-        (el.type === 'text' ?
-          sect('Текст', row('Содержимое', '<input id="t_name" value="' + esc(el.name || '') + '">')) : '') +
-        (el.type === 'furniture' ?
-          sect('Поворот',
-            row('Угол, °', '<input id="e_rot" type="number" step="15" value="' + (el.rotation || 0) + '">') +
-            '<button class="btn-primary" id="rotBtn" style="margin-top:6px">🔄 Повернуть +15°</button>'
-          ) : '') +
-        sect('Позиция',
-          '<div style="font-size:12px;color:#777">X: ' + el.x.toFixed(2) +
-          ' м, Y: ' + el.y.toFixed(2) + ' м</div>'
-        ) +
-        sect('', (el.type === 'text' ? '<button class="btn-primary" id="saveBtn">Сохранить</button>' : '') +
-                 '<button class="btn-danger" id="delBtn">Удалить</button>');
-
-      document.getElementById('delBtn').addEventListener('click', function () {
-        if (!confirm('Удалить?')) return;
-        API.del('/api/projects/elements/' + el.id).then(function () {
-          selected = null; loadAll(); renderProps();
-        });
-      });
-      if (el.type === 'text') {
-        document.getElementById('saveBtn').addEventListener('click', function () {
-          API.put('/api/projects/elements/' + el.id, {
-            type: 'text', name: v('t_name'), x: el.x, y: el.y
-          }).then(loadAll);
-        });
-      }
-      if (el.type === 'furniture') {
-        var rotBtn = document.getElementById('rotBtn');
-        if (rotBtn) rotBtn.addEventListener('click', function () {
-          var newRot = ((el.rotation || 0) + 15) % 360;
-          API.put('/api/projects/elements/' + el.id, {
-            type: 'furniture', subtype: el.subtype,
-            x: el.x, y: el.y, width: el.width, height: el.height,
-            rotation: newRot
-          }).then(loadAll);
-        });
-      }
-      return;
-    }
-
-    propsPanel.innerHTML =
-      head('🚪', el.type === 'room' ? 'Комната' : (el.type === 'door' ? 'Дверь' : 'Окно'), '') +
-      sect('', '<button class="btn-danger" id="delBtn">Удалить</button>');
-    document.getElementById('delBtn').addEventListener('click', function () {
-      if (!confirm('Удалить?')) return;
-      API.del('/api/projects/elements/' + el.id).then(function () {
-        selected = null; loadAll(); renderProps();
-      });
-    });
-  }
-
-  function bindSaveDelete(payloadFn, url) {
-    document.getElementById('saveBtn').addEventListener('click', function () {
-      API.put(url, payloadFn()).then(loadAll).catch(function (err) { alert(err.message); });
-    });
-    document.getElementById('delBtn').addEventListener('click', function () {
-      if (!confirm('Удалить?')) return;
-      API.del(url).then(function () {
-        selected = null; loadAll(); renderProps();
-      });
-    });
-  }
-
-  function head(icon, title, subtitle) {
-    return '<div class="props-header"><div class="icon">' + icon + '</div>' +
-      '<div><div class="title">' + esc(title) + '</div>' +
-      '<div class="subtitle">' + esc(subtitle || '') + '</div></div></div>';
-  }
-  function sect(title, body) {
-    return '<div class="props-section">' + (title ? '<h4>' + title + '</h4>' : '') + body + '</div>';
-  }
-  function row(label, input) {
-    return '<div class="props-row"><label>' + label + '</label>' + input + '</div>';
-  }
-  function v(id) { var el = document.getElementById(id); return el ? el.value : ''; }
-  function esc(s) {
-    return String(s || '').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-  }
-
-  // ==================== SSID ====================
-  function loadSsid() {
-    if (!project) return;
-    API.get('/api/ssid/' + project.id).then(function (list) {
-      ssidProfiles = list;
-      renderSsidList();
-    });
-  }
-
-  function renderSsidList() {
-    var el = document.getElementById('ssidList');
-    if (!el) return;
-    el.innerHTML = '';
-    if (!ssidProfiles.length) {
-      el.innerHTML = '<div style="font-size:11px;color:#999;padding:6px 0">' +
-        'Нет профилей. Нажмите «Добавить SSID».</div>';
-      return;
-    }
-    ssidProfiles.forEach(function (s) {
-      var typeNames = { corporate: 'Корп.', guest: 'Гост.', iot: 'IoT' };
-      var div = document.createElement('div');
-      div.style.cssText = 'background:#f8f7ff;border-radius:6px;' +
-        'padding:8px 10px;margin-bottom:4px;font-size:11px;cursor:pointer;' +
-        'display:flex;justify-content:space-between;align-items:center';
-      div.innerHTML =
-        '<div><div style="font-weight:600;color:#2c2c3a">🔐 ' + esc(s.name) + '</div>' +
-        '<div style="color:#999;font-size:10px">' +
-          typeNames[s.type] + ' · ' + s.auth_method + ' · ' + s.encryption +
-        '</div></div>' +
-        '<span class="del" style="color:#e74c3c;cursor:pointer;font-size:14px">✕</span>';
-      div.addEventListener('click', function (e) {
-        if (e.target.classList.contains('del')) return;
-        openSsidModal(s);
-      });
-      div.querySelector('.del').addEventListener('click', function (e) {
-        e.stopPropagation();
-        if (!confirm('Удалить профиль ' + s.name + '?')) return;
-        API.del('/api/ssid/item/' + s.id).then(loadSsid);
-      });
-      el.appendChild(div);
-    });
-  }
-
-  function openSsidModal(s) {
-    editingSsidId = s ? s.id : null;
-    document.getElementById('ssidModalTitle').textContent =
-      s ? 'Редактировать SSID' : 'Новый SSID-профиль';
-    document.getElementById('s_name').value = s ? s.name : '';
-    document.getElementById('s_type').value = s ? s.type : 'corporate';
-    document.getElementById('s_auth').value = s ? s.auth_method : 'RADIUS';
-    document.getElementById('s_enc').value = s ? s.encryption : 'WPA2-Enterprise';
-    document.getElementById('s_vlan').value = s && s.vlan_id ? s.vlan_id : '';
-    document.getElementById('s_bw').value = s && s.bandwidth_limit_mbps ? s.bandwidth_limit_mbps : 0;
-    document.getElementById('s_iso').checked = s ? s.client_isolation : false;
-    document.getElementById('s_int').checked = s ? s.access_to_internal : false;
-    document.getElementById('s_net').checked = s ? s.access_to_internet : true;
-    document.getElementById('s_cp').checked = s ? s.captive_portal : false;
-    document.getElementById('s_desc').value = s ? (s.description || '') : '';
-    document.getElementById('ssidModal').classList.add('show');
-  }
-
-  var addSsidBtn = document.getElementById('addSsidBtn');
-  if (addSsidBtn) addSsidBtn.addEventListener('click', function () {
-    if (!project) { alert('Выберите проект'); return; }
-    openSsidModal(null);
-  });
-  var sCancel = document.getElementById('s_cancel');
-  if (sCancel) sCancel.addEventListener('click', function () {
-    document.getElementById('ssidModal').classList.remove('show');
-  });
-  var sSave = document.getElementById('s_save');
-  if (sSave) sSave.addEventListener('click', function () {
-    var data = {
-      name: document.getElementById('s_name').value.trim(),
-      type: document.getElementById('s_type').value,
-      auth_method: document.getElementById('s_auth').value,
-      encryption: document.getElementById('s_enc').value,
-      vlan_id: document.getElementById('s_vlan').value ? parseInt(document.getElementById('s_vlan').value, 10) : null,
-      client_isolation: document.getElementById('s_iso').checked,
-      access_to_internal: document.getElementById('s_int').checked,
-      access_to_internet: document.getElementById('s_net').checked,
-      captive_portal: document.getElementById('s_cp').checked,
-      bandwidth_limit_mbps: parseFloat(document.getElementById('s_bw').value) || null,
-      description: document.getElementById('s_desc').value
-    };
-    if (!data.name) { alert('Введите имя профиля'); return; }
-    var promise = editingSsidId
-      ? API.put('/api/ssid/item/' + editingSsidId, data)
-      : API.post('/api/ssid/' + project.id, data);
-    promise.then(function () {
-      document.getElementById('ssidModal').classList.remove('show');
-      loadSsid();
-    }).catch(function (err) { alert(err.message); });
-  });
-
-  // ==================== WLC ====================
-  document.getElementById('wlcBtn').addEventListener('click', function () {
-    if (!project) { alert('Выберите проект'); return; }
-    document.getElementById('wlcModal').classList.add('show');
-    document.getElementById('wlcBody').innerHTML = 'Загрузка...';
-    API.get('/api/infra/' + project.id + '/wlc').then(function (list) {
-      currentWlc = list.length ? list[0] : null;
-      renderWlcForm();
-    });
-  });
-  document.getElementById('wlcClose').addEventListener('click', function () {
-    document.getElementById('wlcModal').classList.remove('show');
-  });
-
-  function renderWlcForm() {
-    var w = currentWlc || {
-      name: 'WLC-01', model: '', ip_address: '', location: '',
-      load_balancing: true, band_steering: true,
-      fast_roaming_802_11r: true, roaming_802_11k: true, roaming_802_11v: true,
-      auto_channel: true, auto_power: true,
-      nms_enabled: true, nms_poll_interval_sec: 60, firmware_auto_update: false,
-      description: ''
-    };
-    var html =
-      '<label>Имя</label><input id="w_name" value="' + esc(w.name) + '">' +
-      '<label>Модель</label><input id="w_model" value="' + esc(w.model || '') + '">' +
-      '<label>IP-адрес</label><input id="w_ip" value="' + esc(w.ip_address || '') + '">' +
-      '<label>Расположение</label><input id="w_loc" value="' + esc(w.location || '') + '">' +
-      '<h3 style="font-size:12px;margin-top:16px;color:#6c5ce7">Управление AP</h3>' +
-      checkbox('w_lb', 'Балансировка нагрузки', w.load_balancing) +
-      checkbox('w_bs', 'Band Steering', w.band_steering) +
-      checkbox('w_r', 'Быстрый роуминг 802.11r', w.fast_roaming_802_11r) +
-      checkbox('w_k', 'Roaming 802.11k', w.roaming_802_11k) +
-      checkbox('w_v', 'Roaming 802.11v', w.roaming_802_11v) +
-      checkbox('w_ac', 'Auto Channel', w.auto_channel) +
-      checkbox('w_ap', 'Auto Power', w.auto_power) +
-      '<h3 style="font-size:12px;margin-top:16px;color:#6c5ce7">NMS</h3>' +
-      checkbox('w_nms', 'Мониторинг включён', w.nms_enabled) +
-      '<label>Интервал опроса, сек</label><input type="number" id="w_poll" value="' + w.nms_poll_interval_sec + '">' +
-      checkbox('w_fw', 'Автообновление прошивок', w.firmware_auto_update) +
-      '<label>Описание</label><textarea id="w_desc" rows="2" style="width:100%;padding:6px;border:1px solid #d0d0d8;border-radius:6px;font-size:12px;box-sizing:border-box">' +
-        esc(w.description || '') + '</textarea>' +
-      '<div class="modal-btns">' +
-        (currentWlc ? '<button class="cancel" id="wlcDel" style="background:#e74c3c;color:#fff">Удалить</button>' : '') +
-        '<button class="ok" id="wlcSave">Сохранить</button>' +
-      '</div>';
-    document.getElementById('wlcBody').innerHTML = html;
-    document.getElementById('wlcSave').addEventListener('click', saveWlc);
-    var del = document.getElementById('wlcDel');
-    if (del) del.addEventListener('click', deleteWlc);
-  }
-
-  function checkbox(id, label, checked) {
-    return '<label style="display:flex;align-items:center;gap:8px;margin-top:6px;font-size:12px">' +
-      '<input type="checkbox" id="' + id + '"' + (checked ? ' checked' : '') + '> ' + label + '</label>';
-  }
-
-  function saveWlc() {
-    var data = {
-      name: document.getElementById('w_name').value,
-      model: document.getElementById('w_model').value,
-      ip_address: document.getElementById('w_ip').value,
-      location: document.getElementById('w_loc').value,
-      load_balancing: document.getElementById('w_lb').checked,
-      band_steering: document.getElementById('w_bs').checked,
-      fast_roaming_802_11r: document.getElementById('w_r').checked,
-      roaming_802_11k: document.getElementById('w_k').checked,
-      roaming_802_11v: document.getElementById('w_v').checked,
-      auto_channel: document.getElementById('w_ac').checked,
-      auto_power: document.getElementById('w_ap').checked,
-      nms_enabled: document.getElementById('w_nms').checked,
-      nms_poll_interval_sec: parseInt(document.getElementById('w_poll').value, 10) || 60,
-      firmware_auto_update: document.getElementById('w_fw').checked,
-      description: document.getElementById('w_desc').value
-    };
-    var promise = currentWlc
-      ? API.put('/api/infra/wlc/' + currentWlc.id, data)
-      : API.post('/api/infra/' + project.id + '/wlc', data);
-    promise.then(function (w) {
-      currentWlc = w;
-      canvasHint.textContent = 'WLC ' + w.name + ' сохранён';
-      document.getElementById('wlcModal').classList.remove('show');
-    }).catch(function (err) { alert(err.message); });
-  }
-
-  function deleteWlc() {
-    if (!currentWlc || !confirm('Удалить WLC?')) return;
-    API.del('/api/infra/wlc/' + currentWlc.id).then(function () {
-      currentWlc = null;
-      document.getElementById('wlcModal').classList.remove('show');
-    });
-  }
-
-  // ==================== КОММУТАТОР ====================
-  document.getElementById('addSwitchBtn').addEventListener('click', function () {
-    if (!project) { alert('Выберите проект'); return; }
-    ['sw_name', 'sw_model', 'sw_loc'].forEach(function (id) {
-      var el = document.getElementById(id);
-      if (el) el.value = '';
-    });
-    document.getElementById('switchModal').classList.add('show');
-  });
-  document.getElementById('sw_cancel').addEventListener('click', function () {
-    document.getElementById('switchModal').classList.remove('show');
-  });
-  document.getElementById('sw_save').addEventListener('click', function () {
-    var data = {
-      name: document.getElementById('sw_name').value.trim() || 'SW-01',
-      model: document.getElementById('sw_model').value,
-      location: document.getElementById('sw_loc').value,
-      total_power_budget_w: parseFloat(document.getElementById('sw_budget').value) || 370,
-      total_ports: parseInt(document.getElementById('sw_ports').value, 10) || 24,
-      poe_ports: parseInt(document.getElementById('sw_poe').value, 10) || 24
-    };
-    API.post('/api/infra/' + project.id + '/switches', data)
-      .then(function (s) {
-        canvasHint.textContent = 'Коммутатор ' + s.name + ' добавлен';
-        document.getElementById('switchModal').classList.remove('show');
-        loadAll();
-      }).catch(function (err) { alert(err.message); });
-  });
-
-  // ==================== PoE / СКС / Нагрузка ====================
-  document.getElementById('poeBtn').addEventListener('click', function () {
-    if (!project) { alert('Выберите проект'); return; }
-    document.getElementById('infraResultTitle').textContent = '⚡ PoE-бюджет';
-    document.getElementById('infraResultModal').classList.add('show');
-    document.getElementById('infraResultBody').innerHTML = 'Загрузка...';
-    API.get('/api/infra/' + project.id + '/poe-budget').then(function (d) {
-      var html =
-        '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:14px">' +
-          box('Коммутаторов', d.switches_count) +
-          box('AP', d.aps_count) +
-          box('Загрузка', d.utilization_percent + '%') +
+        '<div class="props-header">' +
+          '<div class="icon">🧱</div>' +
+          '<div>' +
+            '<div class="title">Стена</div>' +
+            '<div class="subtitle">' + MATERIALS[mat].name + ' · ' + lenM + ' м</div>' +
+          '</div>' +
         '</div>' +
-        '<div style="background:#f8f7ff;border-radius:8px;padding:10px;font-size:12px;margin-bottom:12px">' +
-          'Потребление: <strong>' + d.total_consumption_w + ' Вт</strong> из <strong>' +
-          d.total_budget_w + ' Вт</strong></div>';
-      (d.warnings || []).forEach(function (w) {
-        html += '<div class="load-warning ' + w.type + '">' + esc(w.text) + '</div>';
-      });
-      document.getElementById('infraResultBody').innerHTML = html;
-    });
-  });
 
-  document.getElementById('cableBtn').addEventListener('click', function () {
-    if (!project) { alert('Выберите проект'); return; }
-    document.getElementById('infraResultTitle').textContent = '🔌 Анализ СКС';
-    document.getElementById('infraResultModal').classList.add('show');
-    document.getElementById('infraResultBody').innerHTML = 'Загрузка...';
-    API.get('/api/infra/' + project.id + '/cable-analysis').then(function (d) {
-      var html = '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">' +
-        box('Линий', d.cables_count || 0) +
-        box('Общая длина', (d.total_length_m || 0) + ' м') + '</div>';
-      if (d.cables && d.cables.length) {
-        html += '<table style="width:100%;font-size:11px;border-collapse:collapse;margin-bottom:12px">' +
-          '<tr style="background:#fafafa"><th style="padding:6px;text-align:left">AP</th>' +
-          '<th style="padding:6px;text-align:left">Коммутатор</th>' +
-          '<th style="padding:6px;text-align:right">Длина</th>' +
-          '<th style="padding:6px;text-align:center">OK</th></tr>';
-        d.cables.forEach(function (c) {
-          html += '<tr><td style="padding:4px;border-bottom:1px solid #f0f0f5">' + esc(c.ap_name) + '</td>' +
-            '<td style="padding:4px;border-bottom:1px solid #f0f0f5">' + esc(c.switch_name) + '</td>' +
-            '<td style="padding:4px;border-bottom:1px solid #f0f0f5;text-align:right">' + c.length_m + ' м</td>' +
-            '<td style="padding:4px;border-bottom:1px solid #f0f0f5;text-align:center">' + (c.ok ? '✅' : '❌') + '</td></tr>';
+        '<div class="props-section"><h4>Материал</h4>' +
+          '<div class="props-row"><select id="e_mat">' +
+            Object.keys(MATERIALS).map(k =>
+              '<option value="' + k + '"' + (mat === k ? ' selected' : '') + '>' +
+              MATERIALS[k].name + ' (' + MATERIALS[k].loss + ' дБ)</option>'
+            ).join('') +
+          '</select></div>' +
+        '</div>' +
+
+        '<div class="props-section"><h4>Координаты, м</h4>' +
+          '<div class="props-row"><label>X1</label>' +
+            '<input id="w_x1" type="number" step="0.5" value="' + el.x1 + '"></div>' +
+          '<div class="props-row"><label>Y1</label>' +
+            '<input id="w_y1" type="number" step="0.5" value="' + el.y1 + '"></div>' +
+          '<div class="props-row"><label>X2</label>' +
+            '<input id="w_x2" type="number" step="0.5" value="' + el.x2 + '"></div>' +
+          '<div class="props-row"><label>Y2</label>' +
+            '<input id="w_y2" type="number" step="0.5" value="' + el.y2 + '"></div>' +
+        '</div>' +
+
+        '<div class="props-section">' +
+          '<button class="btn-block" id="delBtn">🗑 Удалить</button>' +
+        '</div>';
+
+      document.getElementById('e_mat').addEventListener('change', e => {
+        el.material = e.target.value;
+        saveWall();
+        render(); renderProps();
+      });
+
+      ['w_x1', 'w_y1', 'w_x2', 'w_y2'].forEach((id, i) => {
+        const inp = document.getElementById(id);
+        inp.addEventListener('change', () => {
+          const v = parseFloat(inp.value);
+          if (isNaN(v)) return;
+          if (i === 0) el.x1 = v;
+          if (i === 1) el.y1 = v;
+          if (i === 2) el.x2 = v;
+          if (i === 3) el.y2 = v;
+          saveWall();
+          render();
         });
-        html += '</table>';
-      }
-      (d.warnings || []).forEach(function (w) {
-        html += '<div class="load-warning ' + w.type + '">' + esc(w.text) + '</div>';
       });
-      document.getElementById('infraResultBody').innerHTML = html;
-    });
-  });
 
-  document.getElementById('infraResultClose').addEventListener('click', function () {
-    document.getElementById('infraResultModal').classList.remove('show');
-  });
+      document.getElementById('delBtn').addEventListener('click', () => {
+        Api.deleteElement(el.id).catch(() => {});
+        state.elements = state.elements.filter(x => x.id !== el.id);
+        state.selected = null;
+        if (state.heatmap) recalcHeatmap();
+        render(); renderProps();
+      });
 
-  function box(label, val) {
-    return '<div style="background:#f8f7ff;border-radius:8px;padding:10px;text-align:center">' +
-      '<div style="font-size:10px;color:#999;text-transform:uppercase;margin-bottom:4px">' + label + '</div>' +
-      '<div style="font-size:16px;font-weight:700">' + val + '</div></div>';
+      function saveWall() {
+        Api.updateElement(el.id, {
+          type: 'wall', material: el.material,
+          x1: el.x1, y1: el.y1, x2: el.x2, y2: el.y2
+        }).catch(err => console.error('save wall:', err));
+        if (state.heatmap) recalcHeatmap();
+      }
+      return;
+    }
+
+    /* --- Фигура / Мебель / Текст --- */
+    if (el.type === 'shape' || el.type === 'furniture' || el.type === 'text') {
+      const icon = el.type === 'text' ? '🅰' : (el.type === 'furniture' ? '📦' : '⬛');
+      const title = el.type === 'text' ? 'Текст'
+                  : el.type === 'furniture' ? 'Мебель'
+                  : 'Фигура';
+
+      propsPanel.innerHTML =
+        '<div class="props-header">' +
+          '<div class="icon">' + icon + '</div>' +
+          '<div>' +
+            '<div class="title">' + title + '</div>' +
+            '<div class="subtitle">' + (el.subtype || '') + '</div>' +
+          '</div>' +
+        '</div>' +
+
+        (el.type === 'text' ?
+          '<div class="props-section"><div class="props-row">' +
+            '<label>Текст</label>' +
+            '<input id="t_name" value="' + esc(el.name || '') + '"></div></div>'
+          : '') +
+
+        (el.type === 'shape' || el.type === 'furniture' ?
+          '<div class="props-section"><h4>Размер, м</h4>' +
+            '<div class="props-row"><label>Ширина</label>' +
+              '<input id="e_w" type="number" step="0.5" value="' +
+              (el.width || 1.5) + '"></div>' +
+            '<div class="props-row"><label>Высота</label>' +
+              '<input id="e_h" type="number" step="0.5" value="' +
+              (el.height || 1) + '"></div>' +
+          '</div>'
+          : '') +
+
+        '<div class="props-section">' +
+          '<button class="btn-block" id="delBtn">🗑 Удалить</button>' +
+        '</div>';
+
+      if (el.type === 'text') {
+        document.getElementById('t_name').addEventListener('change', () => {
+          el.name = document.getElementById('t_name').value;
+          Api.updateElement(el.id, {
+            type: 'text', name: el.name, x: el.x, y: el.y
+          }).catch(err => console.error('save text:', err));
+          render();
+        });
+      } else {
+        ['e_w', 'e_h'].forEach((id, i) => {
+          const inp = document.getElementById(id);
+          inp.addEventListener('change', () => {
+            const v = parseFloat(inp.value);
+            if (isNaN(v)) return;
+            if (i === 0) el.width  = v;
+            if (i === 1) el.height = v;
+
+            if (el.type === 'furniture') {
+              Api.updateElement(el.id, {
+                type: 'furniture', subtype: el.subtype,
+                x: el.x, y: el.y,
+                width: el.width, height: el.height,
+                rotation: el.rotation || 0
+              }).catch(err => console.error('save furniture:', err));
+            } else {
+              Api.updateElement(el.id, {
+                type: 'shape', subtype: el.subtype,
+                material: el.material || 'brick',
+                x: el.x, y: el.y,
+                width: el.width, height: el.height
+              }).catch(err => console.error('save shape:', err));
+            }
+            render();
+          });
+        });
+      }
+
+      document.getElementById('delBtn').addEventListener('click', () => {
+        Api.deleteElement(el.id).catch(() => {});
+        state.elements = state.elements.filter(x => x.id !== el.id);
+        state.selected = null;
+        render(); renderProps();
+      });
+    }
   }
 
-  document.getElementById('showLoad').addEventListener('click', function () {
-    if (!project) { alert('Выберите проект'); return; }
-    document.getElementById('loadModal').classList.add('show');
-    document.getElementById('loadBody').innerHTML = 'Загрузка...';
-    API.get('/api/measurements/' + project.id + '/load').then(function (data) {
-      var html = '<div class="load-summary">' +
-        '<div class="box"><div class="lbl">Устройств</div><div class="val">' + (data.devices_total || 0) + '</div></div>' +
-        '<div class="box"><div class="lbl">Ёмкость</div><div class="val">' + (data.total_capacity_mbps || 0) + '</div></div>' +
-        '<div class="box"><div class="lbl">Загрузка</div><div class="val">' + (data.total_utilization_percent || 0) + '%</div></div>' +
-        '</div>';
-      (data.aps || []).forEach(function (ap) {
-        var util = ap.utilization_percent;
-        var color = util >= 80 ? '#e74c3c' : util >= 60 ? '#fdcb6e' : '#00b894';
-        html += '<div class="load-ap">' +
-          '<div class="head"><span>📡 ' + esc(ap.ap_name) + ' (' + ap.band + ' ГГц)</span>' +
-          '<span class="badge" style="background:#f0f0f5;color:' + color + '">' + util + '%</span></div>' +
-          '<div class="progress"><div style="width:' + Math.min(100, util) + '%;background:' + color + '"></div></div>' +
-          '<div class="stats"><span>Клиентов: <strong>' + ap.assigned_count + '</strong></span>' +
-          '<span>Трафик: <strong>' + ap.total_speed_mbps + '</strong> Мбит/с</span></div>' +
-          '</div>';
-      });
-      (data.warnings || []).forEach(function (w) {
-        html += '<div class="load-warning ' + w.type + '">' + esc(w.text) + '</div>';
-      });
-      document.getElementById('loadBody').innerHTML = html;
-    }).catch(function (err) {
-      document.getElementById('loadBody').innerHTML = '<span style="color:#e74c3c">' + err.message + '</span>';
+  /* ============================================================
+     ВКЛАДКИ ЛЕГЕНДЫ
+     ============================================================ */
+
+  document.querySelectorAll('.legend-tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      document.querySelectorAll('.legend-tab').forEach(x => x.classList.remove('active'));
+      tab.classList.add('active');
+      const isProps = tab.dataset.tab === 'props';
+      document.getElementById('propsPanel').style.display  = isProps ? '' : 'none';
+      document.getElementById('legendPanel').style.display = isProps ? 'none' : '';
     });
   });
-  document.getElementById('loadClose').addEventListener('click', function () {
-    document.getElementById('loadModal').classList.remove('show');
-  });
 
-  document.getElementById('showConnections').addEventListener('click', function () {
-    if (!project) { alert('Выберите проект'); return; }
-    document.getElementById('infraResultTitle').textContent = '🔌 Связи устройств';
-    document.getElementById('infraResultModal').classList.add('show');
-    document.getElementById('infraResultBody').innerHTML = 'Загрузка...';
-    API.get('/api/infra/' + project.id + '/device-connections').then(function (d) {
-      var html =
-        '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:14px">' +
-          box('Коммутаторов', d.switches_count || 0) +
-          box('Устройств', d.devices_count || 0) +
-          box('AP', d.aps_count || 0) +
-        '</div>';
-      if (d.links && d.links.length) {
-        html += '<table style="width:100%;font-size:11px;border-collapse:collapse;margin-bottom:12px">' +
-          '<tr style="background:#fafafa"><th style="padding:6px;text-align:left">Коммутатор</th>' +
-          '<th style="padding:6px;text-align:left">Устройство/AP</th>' +
-          '<th style="padding:6px;text-align:right">Длина</th></tr>';
-        d.links.forEach(function (l) {
-          html += '<tr><td style="padding:4px;border-bottom:1px solid #f0f0f5">' + esc(l.from_name) + '</td>' +
-            '<td style="padding:4px;border-bottom:1px solid #f0f0f5">' + esc(l.to_name) + '</td>' +
-            '<td style="padding:4px;border-bottom:1px solid #f0f0f5;text-align:right;color:' +
-            (l.exceeds_limit ? '#e74c3c' : '#555') + '">' + l.length_m + ' м</td></tr>';
+  /* ============================================================
+     МОДАЛКИ
+     ============================================================ */
+
+  /* ---- Новый проект ---- */
+  document.getElementById('newProjectBtn').addEventListener('click', () => {
+    document.getElementById('modalMask').classList.add('show');
+  });
+  document.getElementById('npCancel').addEventListener('click', () => {
+    document.getElementById('modalMask').classList.remove('show');
+  });
+  document.getElementById('npCreate').addEventListener('click', () => {
+    const name = document.getElementById('npName').value || 'Проект';
+    const W = parseFloat(document.getElementById('npWidth').value) || 20;
+    const H = parseFloat(document.getElementById('npHeight').value) || 30;
+    const Hv = parseFloat(document.getElementById('npRoomH').value) || 3;
+    const material = document.getElementById('npMaterial').value || 'concrete';
+
+    Api.createProject({ name, width_m: W, height_m: H }).then(p => {
+      // Автоматически создаём 4 стены по периметру
+      const walls = [
+        { type: 'wall', material, x1: 0, y1: 0, x2: W, y2: 0 },
+        { type: 'wall', material, x1: W, y1: 0, x2: W, y2: H },
+        { type: 'wall', material, x1: W, y1: H, x2: 0, y2: H },
+        { type: 'wall', material, x1: 0, y1: H, x2: 0, y2: 0 }
+      ];
+      Promise.all(walls.map(w => Api.createElement(p.id, w).catch(() => null)))
+        .then(() => {
+          document.getElementById('modalMask').classList.remove('show');
+          loadProjectData(p.id).then(() => {
+            state.project.height_v = Hv;
+          });
         });
-        html += '</table>';
-      }
-      (d.warnings || []).forEach(function (w) {
-        html += '<div class="load-warning ' + w.type + '">' + esc(w.text) + '</div>';
-      });
-      document.getElementById('infraResultBody').innerHTML = html;
+    }).catch(err => {
+      alert('Ошибка: ' + err.message);
     });
   });
 
-  // ==================== ОПТИМИЗАЦИЯ ====================
-  document.getElementById('optimizeBtn').addEventListener('click', function () {
-    if (!project) { alert('Выберите проект'); return; }
-    document.getElementById('opt_result').innerHTML = '';
-    document.getElementById('optimizeModal').classList.add('show');
+  /* ---- Статистика ---- */
+  document.getElementById('btnStats').addEventListener('click', () => {
+    if (!state.heatmap) return alert('Сначала рассчитайте покрытие (🌊)');
+    const s = state.heatmap.stats;
+
+    document.getElementById('statsBody').innerHTML =
+      '<div class="prop-block"><h4>Средний сигнал</h4>' +
+        '<div style="font-size:22px;font-weight:600">' +
+          s.avg.toFixed(1) + ' dBm</div>' +
+        '<div style="font-size:11px;opacity:.7">min ' +
+          s.min.toFixed(1) + ' / max ' + s.max.toFixed(1) + '</div>' +
+      '</div>' +
+
+      '<div class="prop-block"><h4>Распределение</h4>' +
+        '<div class="stats-row"><span style="color:#4caf50">Отлично ≥ −65</span>' +
+          '<span>' + s.excPct.toFixed(1) + '%</span></div>' +
+        '<div class="stats-row"><span style="color:#ffc107">Хорошо −65…−75</span>' +
+          '<span>' + s.goodPct.toFixed(1) + '%</span></div>' +
+        '<div class="stats-row"><span style="color:#ff9800">Слабо −75…−85</span>' +
+          '<span>' + s.weakPct.toFixed(1) + '%</span></div>' +
+        '<div class="stats-row"><span style="color:#f44336">Мёртвая зона &lt; −85</span>' +
+          '<span>' + s.deadPct.toFixed(1) + '%</span></div>' +
+      '</div>' +
+
+      (s.deadZones.length ?
+        '<div class="prop-block"><h4>Мёртвых зон: ' + s.deadZones.length + '</h4>' +
+          '<div style="font-size:11px;opacity:.7;max-height:140px;overflow:auto">' +
+            s.deadZones.slice(0, 15).map(z =>
+              '(' + z.x.toFixed(1) + ', ' + z.y.toFixed(1) + ') → ' +
+              z.dbm.toFixed(1) + ' dBm'
+            ).join('<br>') +
+          '</div>' +
+        '</div>'
+        : '');
+
+    document.getElementById('statsModal').classList.add('show');
   });
-  document.getElementById('opt_cancel').addEventListener('click', function () {
-    document.getElementById('optimizeModal').classList.remove('show');
-  });
-  document.getElementById('opt_run').addEventListener('click', function () {
-    var coverage = parseFloat(document.getElementById('opt_coverage').value) || 95;
-    var rssi = parseFloat(document.getElementById('opt_rssi').value) || -70;
-    var power = parseFloat(document.getElementById('opt_power').value) || 20;
-    var band = document.getElementById('opt_band').value;
-    document.getElementById('opt_result').innerHTML = 'Расчёт...';
-    API.post('/api/measurements/' + project.id + '/optimize-placement?target_coverage=' +
-             coverage + '&target_rssi=' + rssi + '&ap_power=' + power + '&band=' + band, {})
-      .then(function (data) {
-        optimizationResult = data;
-        var html = '<div style="background:#f8f7ff;border-radius:8px;padding:12px;margin-bottom:10px">' +
-          '<div style="font-size:13px;margin-bottom:6px">Рекомендуется <strong>' + data.recommended_count + '</strong> AP</div>' +
-          '<div style="font-size:11px;color:#777">Покрытие: <strong>' + data.coverage_percent + '%</strong></div></div>';
-        html += '<button class="btn-primary" id="opt_apply" style="margin-top:12px">✅ Применить</button>';
-        document.getElementById('opt_result').innerHTML = html;
-        document.getElementById('opt_apply').addEventListener('click', applyOptimization);
-      })
-      .catch(function (err) {
-        document.getElementById('opt_result').innerHTML = '<span style="color:#e74c3c">' + err.message + '</span>';
-      });
+  document.getElementById('statsClose').addEventListener('click', () => {
+    document.getElementById('statsModal').classList.remove('show');
   });
 
-  function applyOptimization() {
-    if (!optimizationResult) return;
-    if (!confirm('Создать ' + optimizationResult.recommended_count + ' точек?')) return;
-    API.post('/api/measurements/' + project.id + '/apply-placement', optimizationResult.positions)
-      .then(function () {
-        document.getElementById('optimizeModal').classList.remove('show');
-        loadAll();
-      });
-  }
+  /* ---- Спецификация ---- */
+  document.getElementById('btnSpec').addEventListener('click', () => {
+    if (!state.project) return alert('Создайте проект');
 
-  // ==================== СПЕЦИФИКАЦИЯ ====================
-  document.getElementById('specBtn').addEventListener('click', function () {
-    if (!project) { alert('Выберите проект'); return; }
-    document.getElementById('infraResultTitle').textContent = '📋 Спецификация';
-    document.getElementById('infraResultModal').classList.add('show');
-    document.getElementById('infraResultBody').innerHTML = 'Загрузка...';
-    API.get('/api/infra/' + project.id + '/specification').then(function (d) {
-      var html = '<div style="background:#f8f7ff;border-radius:8px;padding:10px;font-size:12px;margin-bottom:12px">' +
-        'Проект: <strong>' + esc(d.project_name) + '</strong></div>';
-      if (d.items.length) {
-        html += '<table style="width:100%;font-size:11px;border-collapse:collapse">' +
-          '<tr style="background:#fafafa"><th style="padding:6px;text-align:left">Категория</th>' +
-          '<th style="padding:6px;text-align:left">Наименование</th>' +
-          '<th style="padding:6px;text-align:left">Модель</th>' +
-          '<th style="padding:6px;text-align:right">Кол-во</th></tr>';
-        d.items.forEach(function (it) {
-          html += '<tr><td style="padding:5px;border-bottom:1px solid #f0f0f5">' + esc(it.category) + '</td>' +
-            '<td style="padding:5px;border-bottom:1px solid #f0f0f5">' + esc(it.name) + '</td>' +
-            '<td style="padding:5px;border-bottom:1px solid #f0f0f5">' + esc(it.model) + '</td>' +
-            '<td style="padding:5px;border-bottom:1px solid #f0f0f5;text-align:right">' + it.qty + ' ' + it.unit + '</td></tr>';
-        });
-        html += '</table>';
+    const totalCable = state.aps.reduce((sum, ap) => {
+      let best = Infinity;
+      state.switches.forEach(sw => {
+        best = Math.min(best, Math.hypot(ap.x - sw.x, ap.y - sw.y) * CABLE_COEF);
+      });
+      return sum + (isFinite(best) ? best : 0);
+    }, 0);
+
+    document.getElementById('specBody').innerHTML =
+      '<p>Проект: <b>' + esc(state.project.name) + '</b> · Площадь: ' +
+        (state.project.width_m * state.project.height_m).toFixed(1) + ' м²</p>' +
+
+      '<table style="width:100%;font-size:12px;border-collapse:collapse;margin-top:10px">' +
+        '<tr style="background:var(--panel-2)">' +
+          '<th style="text-align:left;padding:6px">Категория</th>' +
+          '<th style="text-align:left">Наименование</th>' +
+          '<th>Кол-во</th><th>Ед.</th>' +
+        '</tr>' +
+        '<tr><td style="padding:6px">Точка доступа Wi-Fi</td>' +
+          '<td>Generic AP</td>' +
+          '<td style="text-align:center">' + state.aps.length + '</td><td>шт</td></tr>' +
+        '<tr><td style="padding:6px">Коммутационное оборудование</td>' +
+          '<td>PoE-коммутатор</td>' +
+          '<td style="text-align:center">' + state.switches.length + '</td><td>шт</td></tr>' +
+        '<tr><td style="padding:6px">Кабельная инфраструктура</td>' +
+          '<td>Кабель Cat5e UTP</td>' +
+          '<td style="text-align:center">' + totalCable.toFixed(1) + '</td><td>м</td></tr>' +
+        '<tr><td style="padding:6px">Клиентские устройства</td>' +
+          '<td>ПК, ноутбуки, IoT</td>' +
+          '<td style="text-align:center">' + state.devices.length + '</td><td>шт</td></tr>' +
+      '</table>';
+
+    document.getElementById('specModal').classList.add('show');
+  });
+  document.getElementById('specClose').addEventListener('click', () => {
+    document.getElementById('specModal').classList.remove('show');
+  });
+
+  /* ---- PoE ---- */
+  document.getElementById('btnPoe').addEventListener('click', () => {
+    if (!state.project) return alert('Создайте проект');
+
+    const budget = state.switches.reduce((s, sw) => s + sw.poeBudget, 0);
+    const ports  = state.switches.reduce((s, sw) => s + sw.totalPorts, 0);
+    const need   = state.aps.reduce((s, ap) =>
+      s + (POE[ap.band === '2.4' ? '2.4' : ap.band === '6' ? '6' : '5'] || 15.5), 0);
+
+    const warnings = [];
+    if (!state.switches.length) {
+      warnings.push({ t: 'error', m: 'Коммутаторы не добавлены' });
+    } else {
+      if (need > budget) {
+        warnings.push({ t: 'error',
+          m: 'Превышен PoE-бюджет: нужно ' + need.toFixed(1) +
+             ' Вт, доступно ' + budget + ' Вт' });
+      } else if (need > budget * 0.8) {
+        warnings.push({ t: 'warning',
+          m: 'PoE-бюджет загружен на ' +
+             (need / budget * 100).toFixed(0) + '%' });
+      } else {
+        warnings.push({ t: 'ok',
+          m: 'PoE-бюджет: ' + need.toFixed(1) + ' Вт из ' + budget + ' Вт' });
       }
-      document.getElementById('infraResultBody').innerHTML = html;
-    });
+      if (state.aps.length > ports) {
+        warnings.push({ t: 'error',
+          m: 'Недостаточно портов: ' + state.aps.length +
+             ' AP, доступно ' + ports });
+      }
+    }
+
+    const cm = { error: '#f44336', warning: '#ff9800', ok: '#4caf50' };
+    document.getElementById('poeBody').innerHTML =
+      '<p>Коммутаторов: <b>' + state.switches.length + '</b> · AP: <b>' +
+        state.aps.length + '</b></p>' +
+      '<p>Общий бюджет: <b>' + budget + ' Вт</b> · Потребление: <b>' +
+        need.toFixed(1) + ' Вт</b></p>' +
+      '<p>Портов: <b>' + ports + '</b></p>' +
+      '<hr style="border-color:var(--border);margin:12px 0">' +
+      warnings.map(w =>
+        '<div style="padding:8px 12px;border-left:3px solid ' + cm[w.t] +
+        ';margin-bottom:6px;background:var(--panel-2);border-radius:3px">' +
+        w.m + '</div>'
+      ).join('');
+
+    document.getElementById('poeModal').classList.add('show');
+  });
+  document.getElementById('poeClose').addEventListener('click', () => {
+    document.getElementById('poeModal').classList.remove('show');
   });
 
-  // ==================== ЭКСПОРТ ====================
-  document.getElementById('exportPngBtn').addEventListener('click', function () {
-    if (!project) { alert('Выберите проект'); return; }
-    // Скрываем ghost-элементы и выделение
-    var oldSel = layerSelection.style.display;
-    layerSelection.style.display = 'none';
+  /* ============================================================
+     ЭКСПОРТ PNG И CSV
+     ============================================================ */
 
-    // Формируем SVG как строку
-    var svgClone = svg.cloneNode(true);
-    // Удаляем временные слои
-    var selLayer = svgClone.querySelector('#layerSelection');
-    if (selLayer) selLayer.remove();
-    var draftLayer = svgClone.querySelector('#layerDraft');
-    if (draftLayer) draftLayer.innerHTML = '';
+  document.getElementById('btnSave').addEventListener('click', exportPNG);
+  document.getElementById('btnCsv').addEventListener('click',  exportCSV);
 
-    svgClone.setAttribute('width', project.width_m * PX_PER_M);
-    svgClone.setAttribute('height', project.height_m * PX_PER_M);
-    var svgString = new XMLSerializer().serializeToString(svgClone);
-    var svgBlob = new Blob([svgString], { type: 'image/svg+xml;charset=utf-8' });
-    var url = URL.createObjectURL(svgBlob);
+  function exportPNG() {
+    if (!state.project) return alert('Создайте проект');
 
-    var img = new Image();
-    img.onload = function () {
-      var canvas = document.createElement('canvas');
-      canvas.width = project.width_m * PX_PER_M;
-      canvas.height = project.height_m * PX_PER_M;
-      var ctx = canvas.getContext('2d');
-      ctx.fillStyle = '#ffffff';
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
+    L.layerSelection.style.display = 'none';
+    L.layerDraft.innerHTML = '';
+
+    const W = state.project.width_m  * PX_PER_M + 120;
+    const H = state.project.height_m * PX_PER_M + 120;
+
+    const clone = svg.cloneNode(true);
+    clone.setAttribute('width', W);
+    clone.setAttribute('height', H);
+    clone.setAttribute('viewBox', '-60 -60 ' + W + ' ' + H);
+    clone.setAttribute('preserveAspectRatio', 'xMidYMid meet');
+
+    const str = new XMLSerializer().serializeToString(clone);
+    const blob = new Blob([str], { type: 'image/svg+xml;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const img = new Image();
+
+    img.onload = () => {
+      const c = document.createElement('canvas');
+      c.width = W;
+      c.height = H;
+      const ctx = c.getContext('2d');
+
+      ctx.fillStyle = getComputedStyle(document.documentElement)
+        .getPropertyValue('--canvas').trim() || '#1a1a1a';
+      ctx.fillRect(0, 0, c.width, c.height);
       ctx.drawImage(img, 0, 0);
+
+      if (state.heatmap && heatmapCanvas.style.display !== 'none') {
+        ctx.globalAlpha = 0.75;
+        ctx.drawImage(heatmapCanvas, 60, 60);
+        ctx.globalAlpha = 1;
+      }
+
       URL.revokeObjectURL(url);
-      canvas.toBlob(function (blob) {
-        var dlUrl = URL.createObjectURL(blob);
-        var a = document.createElement('a');
-        a.href = dlUrl;
-        a.download = (project.name || 'plan') + '.png';
-        a.click();
-        URL.revokeObjectURL(dlUrl);
-      }, 'image/png');
-      layerSelection.style.display = oldSel;
-    };
-    img.onerror = function () {
-      alert('Ошибка экспорта PNG');
-      layerSelection.style.display = oldSel;
+
+      const a = document.createElement('a');
+      a.download = (state.project.name || 'plan') + '.png';
+      a.href = c.toDataURL('image/png');
+      a.click();
+
+      L.layerSelection.style.display = '';
     };
     img.src = url;
-  });
+  }
 
-  document.getElementById('exportSvgBtn').addEventListener('click', function () {
-    if (!project) { alert('Выберите проект'); return; }
-    var svgClone = svg.cloneNode(true);
-    var selLayer = svgClone.querySelector('#layerSelection');
-    if (selLayer) selLayer.remove();
-    var draftLayer = svgClone.querySelector('#layerDraft');
-    if (draftLayer) draftLayer.innerHTML = '';
-    svgClone.setAttribute('width', project.width_m * PX_PER_M);
-    svgClone.setAttribute('height', project.height_m * PX_PER_M);
-    var svgString = '<?xml version="1.0" encoding="UTF-8"?>\n' +
-      new XMLSerializer().serializeToString(svgClone);
-    var blob = new Blob([svgString], { type: 'image/svg+xml;charset=utf-8' });
-    var url = URL.createObjectURL(blob);
-    var a = document.createElement('a');
-    a.href = url;
-    a.download = (project.name || 'plan') + '.svg';
+  function exportCSV() {
+    if (!state.project) return alert('Создайте проект');
+
+    const lines = ['# Тип;Имя;X (м);Y (м);Примечание'];
+    state.aps.forEach(a => lines.push(
+      'AP;' + a.name + ';' + a.x + ';' + a.y +
+      ';power=' + a.power + 'dBm freq=' + a.freq));
+    state.switches.forEach(s => lines.push(
+      'Switch;' + s.name + ';' + s.x + ';' + s.y +
+      ';ports=' + s.totalPorts + ' poe=' + s.poeBudget + 'W'));
+    state.devices.forEach(d => lines.push(
+      'Device;' + d.name + ';' + d.x + ';' + d.y + ';type=' + d.type));
+    state.elements.filter(e => e.type === 'wall').forEach((w, i) => {
+      lines.push('Wall;#' + (i + 1) + ';' +
+        w.x1 + ',' + w.y1 + ';' +
+        w.x2 + ',' + w.y2 + ';material=' + w.material);
+    });
+
+    if (state.heatmap) {
+      lines.push('');
+      lines.push('# Статистика покрытия');
+      const s = state.heatmap.stats;
+      lines.push('avg_dbm;'  + s.avg.toFixed(1));
+      lines.push('min_dbm;'  + s.min.toFixed(1));
+      lines.push('max_dbm;'  + s.max.toFixed(1));
+      lines.push('dead_pct;' + s.deadPct.toFixed(1));
+      lines.push('');
+      lines.push('# Мёртвые зоны (первые 50)');
+      lines.push('x_m;y_m;rssi_dbm');
+      s.deadZones.slice(0, 50).forEach(z =>
+        lines.push(z.x.toFixed(2) + ';' + z.y.toFixed(2) + ';' +
+                   z.dbm.toFixed(1)));
+    }
+
+    const csv = '\uFEFF' + lines.join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = (state.project.name || 'plan') + '.csv';
     a.click();
-    URL.revokeObjectURL(url);
-  });
+    URL.revokeObjectURL(a.href);
+  }
 
-  // ==================== LOCALSTORAGE ====================
-  var STORAGE_KEY = 'coworkwifi_planner_state';
+  /* ============================================================
+     API-МАППИНГ: серверные модели ↔ локальные
+     ============================================================ */
 
-  document.getElementById('saveLocalBtn').addEventListener('click', function () {
-    if (!project) { alert('Выберите проект'); return; }
-    var state = {
-      project: project,
-      elements: elements,
-      devices: devices,
-      aps: aps,
-      switches: switches,
-      savedAt: new Date().toISOString()
-    };
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-      canvasHint.textContent = 'Сохранено в браузер: ' + new Date().toLocaleTimeString('ru-RU');
-    } catch (e) {
-      alert('Ошибка сохранения: ' + e.message);
-    }
-  });
-
-  document.getElementById('loadLocalBtn').addEventListener('click', function () {
-    var raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) { alert('Нет сохранённых данных в браузере'); return; }
-    try {
-      var state = JSON.parse(raw);
-      if (!state.project) throw new Error('Повреждённые данные');
-      alert('Загружено сохранение от ' + new Date(state.savedAt).toLocaleString('ru-RU') +
-            '\nПроект: ' + state.project.name +
-            '\nДля просмотра выберите проект "' + state.project.name + '" в списке.');
-    } catch (e) {
-      alert('Ошибка загрузки: ' + e.message);
-    }
-  });
-
-  document.getElementById('clearLocalBtn').addEventListener('click', function () {
-    if (!confirm('Очистить сохранённые данные в браузере?')) return;
-    localStorage.removeItem(STORAGE_KEY);
-    canvasHint.textContent = 'Хранилище очищено';
-  });
-
-  // ==================== ФИНАЛЬНАЯ ИНИЦИАЛИЗАЦИЯ ====================
-  window.__debug = function () {
+  function apiToLocalElement(e) {
     return {
-      project: project,
-      elementsCount: elements.length,
-      devicesCount: devices.length,
-      apsCount: aps.length,
-      switchesCount: switches.length,
-      wallsInDom: layerWalls.children.length,
-      hint: canvasHint.textContent
+      id: e.id,
+      type: e.type,
+      material: e.material,
+      subtype: e.subtype,
+      x1: e.x1, y1: e.y1, x2: e.x2, y2: e.y2,
+      x: e.x, y: e.y,
+      name: e.name,
+      points_json: e.points_json,
+      width: e.width, height: e.height,
+      rotation: e.rotation
     };
-  };
+  }
 
-  updateSnapBadge();
-  console.log('editor.js загружен (полная версия)');
+  function apiToLocalAP(a) {
+    return {
+      id: a.id,
+      name: a.name,
+      model: a.model,
+      x: a.x, y: a.y,
+      power: a.tx_power_dbm != null ? a.tx_power_dbm : 20,
+      gain: a.antenna_gain != null ? a.antenna_gain : 5,
+      freq: a.band === '2.4' ? 2400 : (a.band === '6' ? 6000 : 5000),
+      band: a.band,
+      channel: a.channel
+    };
+  }
+
+  function apiToLocalDevice(d) {
+    return {
+      id: d.id,
+      name: d.name,
+      type: d.type,
+      x: d.x, y: d.y,
+      band: d.band,
+      required_rssi: d.required_rssi,
+      required_speed: d.required_speed,
+      ssid_type: d.ssid_type
+    };
+  }
+
+  function apiToLocalSwitch(s) {
+    return {
+      id: s.id,
+      name: s.name,
+      model: s.model,
+      x: s.x, y: s.y,
+      totalPorts: s.total_ports != null ? s.total_ports : 24,
+      poeBudget: s.total_power_budget_w != null ? s.total_power_budget_w : 370
+    };
+  }
+
+  function objectToApiPayload(kind, o) {
+    if (kind === 'ap') {
+      return {
+        name: o.name,
+        model: o.model || 'Generic AP',
+        x: o.x, y: o.y,
+        tx_power_dbm: o.power,
+        antenna_gain: o.gain,
+        band: o.freq === 2400 ? '2.4' : o.freq === 6000 ? '6' : '5',
+        channel: o.channel,
+        ssid_type: 'corporate'
+      };
+    }
+    if (kind === 'device') {
+      return {
+        name: o.name, type: o.type, x: o.x, y: o.y,
+        band: o.band || '5',
+        required_rssi: o.required_rssi || -65,
+        required_speed: o.required_speed || 10,
+        ssid_type: o.ssid_type || 'corporate'
+      };
+    }
+    if (kind === 'switch') {
+      return {
+        name: o.name, model: o.model || 'PoE Switch',
+        x: o.x, y: o.y,
+        total_ports: o.totalPorts,
+        poe_ports: o.totalPorts,
+        total_power_budget_w: o.poeBudget
+      };
+    }
+    if (kind === 'element') {
+      if (o.type === 'wall') {
+        return {
+          type: 'wall', material: o.material,
+          x1: o.x1, y1: o.y1, x2: o.x2, y2: o.y2
+        };
+      }
+      if (o.type === 'furniture') {
+        return {
+          type: 'furniture', subtype: o.subtype,
+          x: o.x, y: o.y, width: o.width, height: o.height,
+          rotation: o.rotation || 0
+        };
+      }
+      if (o.type === 'text') {
+        return { type: 'text', name: o.name, x: o.x, y: o.y };
+      }
+      if (o.type === 'shape') {
+        return {
+          type: 'shape', subtype: o.subtype,
+          material: o.material, x: o.x, y: o.y,
+          width: o.width, height: o.height
+        };
+      }
+    }
+    return null;
+  }
+
+  /* ============================================================
+     ЗАГРУЗКА ПРОЕКТА С СЕРВЕРА
+     ============================================================ */
+
+  function loadProjectData(projectId) {
+    state.loading = true;
+
+    return Api.getProject(projectId).then(p => {
+      state.projectId = p.id;
+      state.project = {
+        name: p.name,
+        width_m: p.width_m,
+        height_m: p.height_m,
+        height_v: state.project ? state.project.height_v || 3 : 3
+      };
+
+      return Promise.all([
+        Api.listElements(projectId).catch(() => []),
+        Api.listAPs(projectId).catch(() => []),
+        Api.listDevices(projectId).catch(() => []),
+        Api.listSwitches(projectId).catch(() => [])
+      ]);
+    }).then(([elements, aps, devices, switches]) => {
+      state.elements = (elements || []).map(apiToLocalElement);
+      state.aps      = (aps || []).map(apiToLocalAP);
+      state.devices  = (devices || []).map(apiToLocalDevice);
+      state.switches = (switches || []).map(apiToLocalSwitch);
+
+      // Счётчики для автоименования — берём максимум из существующих
+      state.apCnt  = state.aps.length;
+      state.swCnt  = state.switches.length;
+      state.devCnt = state.devices.length;
+
+      // Максимальный id + 1
+      const allIds = [
+        ...state.elements.map(x => x.id || 0),
+        ...state.aps.map(x => x.id || 0),
+        ...state.devices.map(x => x.id || 0),
+        ...state.switches.map(x => x.id || 0)
+      ];
+      state.idSeq = Math.max(1, ...allIds) + 1;
+
+      // Сбросить историю и выделение
+      state.history = [];
+      state.redoStack = [];
+      state.selected = null;
+      state.multiSelected = [];
+      state.heatmap = null;
+
+      // ViewBox с отступами
+      applyViewBox(-60, -60,
+        state.project.width_m * PX_PER_M + 120,
+        state.project.height_m * PX_PER_M + 120);
+
+      document.getElementById('zoomLabel').textContent = '100%';
+      state.zoom = 1;
+
+      canvasHint.textContent = state.project.name + ' · ' +
+        state.project.width_m + '×' + state.project.height_m + ' м';
+
+      render();
+      renderProps();
+      state.loading = false;
+    }).catch(err => {
+      console.error('loadProjectData:', err);
+      state.loading = false;
+      throw err;
+    });
+  }
+
+  /* ============================================================
+     ВЫБОР ПРОЕКТА ПРИ СТАРТЕ
+     ============================================================ */
+
+  function init() {
+    buildPalette();
+    renderLegendIcons();
+
+    // Пробуем загрузить список проектов
+    Api.listProjects().then(list => {
+      if (list && list.length) {
+        // Загружаем самый свежий
+        const p = list[0];
+        loadProjectData(p.id);
+      } else {
+        // Нет проектов — предложить создать
+        canvasHint.textContent = 'Проектов нет. Нажмите «+ Новый проект».';
+      }
+    }).catch(err => {
+      console.error('init:', err);
+      canvasHint.textContent = 'Ошибка загрузки. Проверьте, что сервер запущен.';
+    });
+  }
+
+  /* ============================================================
+     РЕСАЙЗ ОКНА
+     ============================================================ */
+
+  window.addEventListener('resize', () => {
+    if (state.heatmap) drawHeatmap();
+  });
+
+  /* ============================================================
+     СТАРТ
+     ============================================================ */
+
+  init();
+  console.log('[editor.js] загружен');
+
 })();

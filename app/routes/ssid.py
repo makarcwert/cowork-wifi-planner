@@ -1,17 +1,16 @@
-"""SSID-профили (п. 7.2.4 ТЗ)."""
+"""SSID-профили (без авторизации)."""
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from ..database import get_db
-from ..models import User, Project, SSIDProfile, AuditLog
+from ..models import Project, SSIDProfile
 from ..schemas import SSIDProfileCreate, SSIDProfileOut
-from ..deps import get_current_user, require_role
 
 router = APIRouter()
 
 
 @router.get("/templates")
-def get_templates(_: User = Depends(get_current_user)):
+def get_templates():
     return [
         {"name": "Corporate", "type": "corporate",
          "auth_method": "RADIUS", "encryption": "WPA3-Enterprise",
@@ -35,31 +34,27 @@ def get_templates(_: User = Depends(get_current_user)):
 
 
 @router.get("/{project_id}", response_model=list[SSIDProfileOut])
-def list_ssid(project_id: int, db: Session = Depends(get_db),
-              _: User = Depends(get_current_user)):
-    return db.query(SSIDProfile).filter(SSIDProfile.project_id == project_id).all()
+def list_ssid(project_id: int, db: Session = Depends(get_db)):
+    return db.query(SSIDProfile).filter(
+        SSIDProfile.project_id == project_id).all()
 
 
-@router.post("/{project_id}", response_model=SSIDProfileOut, status_code=201)
+@router.post("/{project_id}",
+             response_model=SSIDProfileOut, status_code=201)
 def create_ssid(project_id: int, data: SSIDProfileCreate,
-                db: Session = Depends(get_db),
-                user: User = Depends(require_role("admin", "engineer"))):
+                db: Session = Depends(get_db)):
     if not db.query(Project).get(project_id):
         raise HTTPException(status_code=404, detail="Проект не найден")
     s = SSIDProfile(project_id=project_id, **data.dict())
     db.add(s)
     db.commit()
     db.refresh(s)
-    db.add(AuditLog(user_id=user.id, action="create_ssid",
-                    entity="ssid_profile", entity_id=s.id))
-    db.commit()
     return s
 
 
 @router.put("/item/{ssid_id}", response_model=SSIDProfileOut)
 def update_ssid(ssid_id: int, data: SSIDProfileCreate,
-                db: Session = Depends(get_db),
-                _: User = Depends(require_role("admin", "engineer"))):
+                db: Session = Depends(get_db)):
     s = db.query(SSIDProfile).get(ssid_id)
     if not s:
         raise HTTPException(status_code=404, detail="Профиль не найден")
@@ -71,8 +66,7 @@ def update_ssid(ssid_id: int, data: SSIDProfileCreate,
 
 
 @router.delete("/item/{ssid_id}", status_code=204)
-def delete_ssid(ssid_id: int, db: Session = Depends(get_db),
-                _: User = Depends(require_role("admin", "engineer"))):
+def delete_ssid(ssid_id: int, db: Session = Depends(get_db)):
     s = db.query(SSIDProfile).get(ssid_id)
     if not s:
         raise HTTPException(status_code=404, detail="Профиль не найден")

@@ -1,27 +1,40 @@
 <!DOCTYPE html>
-<html lang="ru">
+<html lang="ru" data-theme="dark">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Админ-панель — CoworkWiFi Planner</title>
-<link rel="stylesheet" href="/static/css/style.css">
+<link rel="stylesheet" href="/static/style.css">
+<script>
+  (function () {
+    var t = localStorage.getItem('cw_theme') || 'dark';
+    document.documentElement.setAttribute('data-theme', t);
+  })();
+</script>
 </head>
-<body class="admin-page">
-<header class="topbar">
-  <div class="logo">📡 CoworkWiFi Planner</div>
-  <nav>
-    <a href="/static/index.html">Главная</a>
-    <a href="/static/editor.html">Редактор</a>
-    <a href="/static/measurements.html">Измерения</a>
-    <a href="/static/admin.html" class="active">Админ</a>
-  </nav>
-  <div class="user-info">
-    <span id="userName"></span>
-    <button id="logoutBtn" class="btn">Выйти</button>
+<body class="admin-page scroll-page">
+
+<!-- ═══════════ ТОПБАР ═══════════ -->
+<header class="topbar-drawing">
+  <div class="topbar-left">
+    <a class="brand" href="/static/index.html">📡 CoworkWiFi Planner</a>
+    <div style="display:flex;gap:2px;margin-left:16px">
+      <a class="menu-item" href="/static/index.html">Главная</a>
+      <a class="menu-item" href="/static/editor.html">Редактор</a>
+      <a class="menu-item" href="/static/measurements.html">Измерения</a>
+      <a class="menu-item active" href="/static/admin.html">Админ</a>
+    </div>
+  </div>
+  <div class="spacer"></div>
+  <div class="topbar-right">
+    <button class="btn-icon" id="themeToggle" title="Сменить тему">☀</button>
+    <span class="zoom-label" id="userName" style="min-width:auto;padding:0 8px"></span>
+    <button class="btn-icon" id="logoutBtn" title="Выйти">⏻</button>
   </div>
 </header>
 
-<main class="container" style="max-width:1300px">
+<!-- ═══════════ КОНТЕНТ ═══════════ -->
+<main class="admin-container">
   <h1>Панель администратора</h1>
 
   <div class="tabs">
@@ -31,7 +44,7 @@
     <button class="tab" data-tab="audit">📜 Журнал действий</button>
   </div>
 
-  <!-- ОБЗОР -->
+  <!-- Обзор -->
   <section id="tab-dashboard">
     <div class="metric-grid" id="metricGrid"></div>
     <div class="chart-row">
@@ -56,9 +69,9 @@
     </div>
   </section>
 
-  <!-- ПОЛЬЗОВАТЕЛИ -->
+  <!-- Пользователи -->
   <section id="tab-users" style="display:none">
-    <div class="toolbar">
+    <div class="toolbar-bar">
       <h2>Пользователи</h2>
       <button class="btn-primary-sm" id="addUserBtn">➕ Добавить пользователя</button>
     </div>
@@ -66,8 +79,9 @@
       <table class="table" id="usersTable">
         <thead>
           <tr>
-            <th>ID</th><th>ФИО</th><th>Email</th><th>Роль</th>
-            <th>Статус</th><th>Зарегистрирован</th><th>Последний вход</th>
+            <th>ID</th><th>ФИО</th><th>Email</th>
+            <th>Роль</th><th>Статус</th>
+            <th>Зарегистрирован</th><th>Последний вход</th>
             <th>Действия</th>
           </tr>
         </thead>
@@ -76,17 +90,19 @@
     </div>
   </section>
 
-  <!-- ПРОЕКТЫ -->
+  <!-- Проекты -->
   <section id="tab-projects" style="display:none">
-    <div class="toolbar">
+    <div class="toolbar-bar">
       <h2>Все проекты</h2>
     </div>
     <div class="table-wrap">
       <table class="table" id="projectsTable">
         <thead>
           <tr>
-            <th>ID</th><th>Название</th><th>Владелец</th><th>Размер</th>
-            <th>Элементов</th><th>Устройств</th><th>AP</th><th>Создан</th><th></th>
+            <th>ID</th><th>Название</th><th>Владелец</th>
+            <th>Размер</th><th>Элементов</th>
+            <th>Устройств</th><th>AP</th>
+            <th>Создан</th><th></th>
           </tr>
         </thead>
         <tbody></tbody>
@@ -94,18 +110,18 @@
     </div>
   </section>
 
-  <!-- ЖУРНАЛ -->
+  <!-- Журнал -->
   <section id="tab-audit" style="display:none">
-    <div class="toolbar">
+    <div class="toolbar-bar">
       <h2>Журнал действий</h2>
-      <button class="btn-sm" id="refreshAudit">🔄 Обновить</button>
+      <button class="btn-primary-sm" id="refreshAudit">🔄 Обновить</button>
     </div>
     <div class="table-wrap">
       <table class="table" id="auditTable">
         <thead>
           <tr>
-            <th>Время</th><th>Пользователь</th><th>Действие</th>
-            <th>Сущность</th><th>ID</th>
+            <th>Время</th><th>Пользователь</th>
+            <th>Действие</th><th>Сущность</th><th>ID</th>
           </tr>
         </thead>
         <tbody></tbody>
@@ -114,7 +130,7 @@
   </section>
 </main>
 
-<!-- МОДАЛКА добавления пользователя -->
+<!-- ═══════════ МОДАЛКА: НОВЫЙ ПОЛЬЗОВАТЕЛЬ ═══════════ -->
 <div class="modal-mask" id="userModal">
   <div class="modal">
     <h2>Новый пользователь</h2>
@@ -138,7 +154,19 @@
 </div>
 
 <script src="/static/js/api.js"></script>
-<script src="/static/js/report.js"></script>
 <script src="/static/js/admin.js"></script>
+<script>
+  (function () {
+    var btn = document.getElementById('themeToggle');
+    if (!btn) return;
+    btn.textContent = document.documentElement.getAttribute('data-theme') === 'dark' ? '☀' : '🌙';
+    btn.addEventListener('click', function () {
+      var next = document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+      document.documentElement.setAttribute('data-theme', next);
+      localStorage.setItem('cw_theme', next);
+      btn.textContent = next === 'dark' ? '☀' : '🌙';
+    });
+  })();
+</script>
 </body>
 </html>

@@ -1,0 +1,712 @@
+
+/* ============================================================
+   CoworkWiFi Planner — стиль «технический чертёж»
+   ============================================================ */
+
+:root {
+  --dwg-bg: #FAFAFA;
+  --dwg-line: #333333;
+  --dwg-line-soft: #E0E0E0;
+  --dwg-line-hard: #666666;
+  --dwg-text: #2C2C3A;
+  --dwg-text-dim: #666666;
+  --dwg-net: #2E5EAA;
+  --dwg-iot: #FF8C42;
+  --dwg-danger: #E63946;
+  --dwg-ok: #00B894;
+  --dwg-warn: #FDCB6E;
+  --dwg-panel: #FFFFFF;
+  --dwg-panel-alt: #F5F5F7;
+  --dwg-border: #D8D8DC;
+  --dwg-header: #2C3E50;
+  --dwg-radius: 3px;
+  --dwg-mono: "JetBrains Mono", "Consolas", "Monaco", monospace;
+}
+
+[data-theme="dark"] {
+  --dwg-bg: #1C1D20;
+  --dwg-line: #B0B0B8;
+  --dwg-line-soft: #3A3A42;
+  --dwg-line-hard: #808088;
+  --dwg-text: #E8EAED;
+  --dwg-text-dim: #9A9AA8;
+  --dwg-panel: #242629;
+  --dwg-panel-alt: #1F2023;
+  --dwg-border: #3C4043;
+}
+
+/* ---------- Общая обёртка ---------- */
+body.editor-page { overflow: hidden; background: var(--dwg-bg); }
+
+.editor-shell {
+  display: grid;
+  grid-template-rows: auto auto 1fr auto;
+  height: 100vh;
+  font-family: "Inter", "Segoe UI", system-ui, sans-serif;
+  font-size: 13px;
+  color: var(--dwg-text);
+  background: var(--dwg-bg);
+}
+
+/* ---------- Шапка чертежа ---------- */
+.drawing-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  padding: 10px 20px 8px;
+  border-bottom: 2px solid var(--dwg-line);
+  background: var(--dwg-panel);
+}
+.drawing-label {
+  font-size: 10px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--dwg-text-dim);
+  margin-bottom: 2px;
+}
+.drawing-header h1 {
+  font-size: 18px;
+  font-weight: 700;
+  margin: 0;
+  letter-spacing: -0.3px;
+}
+.drawing-meta {
+  display: flex;
+  gap: 22px;
+  padding-bottom: 2px;
+}
+.meta-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  align-items: flex-end;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.meta-label { color: var(--dwg-text-dim); }
+.meta-value { color: var(--dwg-text); font-weight: 700; font-family: var(--dwg-mono); }
+
+/* ---------- Верхний тулбар ---------- */
+.topbar-drawing {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 16px;
+  padding: 8px 20px;
+  border-bottom: 1px solid var(--dwg-border);
+  background: var(--dwg-panel-alt);
+}
+.topbar-left { display: flex; align-items: center; gap: 20px; }
+.topbar-drawing .brand {
+  font-weight: 700;
+  font-size: 13px;
+  color: var(--dwg-text);
+  text-decoration: none;
+  letter-spacing: 0.3px;
+}
+.menu { display: flex; gap: 2px; }
+.menu-item {
+  padding: 5px 10px;
+  font-size: 12px;
+  color: var(--dwg-text-dim);
+  text-decoration: none;
+  border-radius: var(--dwg-radius);
+}
+.menu-item:hover { background: rgba(0,0,0,0.04); text-decoration: none; }
+.menu-item.active {
+  background: var(--dwg-net);
+  color: #fff;
+  font-weight: 600;
+}
+.project-select {
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--dwg-border);
+  border-radius: var(--dwg-radius);
+  background: var(--dwg-panel);
+  color: var(--dwg-text);
+  font-size: 12px;
+  font-family: inherit;
+  min-width: 220px;
+  text-align: center;
+  outline: none;
+}
+.topbar-right { display: flex; align-items: center; gap: 4px; justify-content: flex-end; }
+.topbar-right .sep { color: var(--dwg-border); padding: 0 4px; }
+.btn-icon {
+  width: 28px; height: 28px;
+  display: grid; place-items: center;
+  border: 1px solid transparent;
+  border-radius: var(--dwg-radius);
+  background: transparent;
+  color: var(--dwg-text-dim);
+  cursor: pointer;
+  font-size: 14px;
+  transition: background 100ms;
+}
+.btn-icon:hover { background: rgba(0,0,0,0.06); color: var(--dwg-text); }
+.btn-primary-sm {
+  height: 28px;
+  padding: 0 12px;
+  background: var(--dwg-net);
+  color: #fff;
+  border: none;
+  border-radius: var(--dwg-radius);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.btn-primary-sm:hover { background: #1E4080; }
+.zoom-label {
+  font-family: var(--dwg-mono);
+  font-size: 11px;
+  color: var(--dwg-text-dim);
+  min-width: 38px;
+  text-align: center;
+}
+.avatar {
+  width: 26px; height: 26px;
+  border-radius: 50%;
+  background: var(--dwg-header);
+  color: #fff;
+  display: grid; place-items: center;
+  font-size: 10px;
+  font-weight: 700;
+  margin-left: 4px;
+}
+
+/* ---------- Рабочая область ---------- */
+.drawing-layout {
+  display: grid;
+  grid-template-columns: 48px 220px 1fr 320px;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* ---------- Панель инструментов ---------- */
+.tools-bar {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: 10px 4px;
+  background: var(--dwg-panel);
+  border-right: 1px solid var(--dwg-border);
+  overflow-y: auto;
+}
+.tool-btn {
+  width: 36px; height: 36px;
+  display: grid; place-items: center;
+  border: 1px solid transparent;
+  border-radius: var(--dwg-radius);
+  background: transparent;
+  color: var(--dwg-text-dim);
+  cursor: pointer;
+  font-size: 16px;
+  transition: all 100ms;
+}
+.tool-btn:hover { background: rgba(0,0,0,0.05); color: var(--dwg-text); }
+.tool-btn.active {
+  background: var(--dwg-net);
+  color: #fff;
+  border-color: var(--dwg-net);
+}
+.tool-divider {
+  width: 24px; height: 1px;
+  background: var(--dwg-border);
+  margin: 4px 0;
+}
+
+/* ---------- Палитра ---------- */
+.palette-bar {
+  background: var(--dwg-panel);
+  border-right: 1px solid var(--dwg-border);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.palette-header {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--dwg-border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.palette-header > span {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  color: var(--dwg-text-dim);
+}
+.palette-search {
+  width: 90px;
+  height: 22px;
+  padding: 0 6px;
+  border: 1px solid var(--dwg-border);
+  border-radius: var(--dwg-radius);
+  background: var(--dwg-panel-alt);
+  font-size: 11px;
+  outline: none;
+  color: var(--dwg-text);
+}
+.palette-groups { flex: 1; overflow-y: auto; }
+.palette-category { border-bottom: 1px solid var(--dwg-border); }
+.palette-cat-header {
+  width: 100%;
+  padding: 8px 12px;
+  background: transparent;
+  border: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: var(--dwg-text-dim);
+  cursor: pointer;
+  text-align: left;
+}
+.palette-cat-header:hover { background: rgba(0,0,0,0.03); }
+.palette-cat-header .chev {
+  font-size: 10px;
+  transition: transform 120ms;
+  display: inline-block;
+}
+.palette-category:not(.open) .chev { transform: rotate(-90deg); }
+.palette-category:not(.open) .palette-grid { display: none; }
+
+.palette-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 4px;
+  padding: 0 8px 10px;
+}
+.palette-item {
+  aspect-ratio: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  padding: 4px;
+  border: 1px solid var(--dwg-border);
+  border-radius: var(--dwg-radius);
+  background: var(--dwg-panel-alt);
+  cursor: pointer;
+  user-select: none;
+  transition: all 120ms;
+}
+.palette-item:hover {
+  border-color: var(--dwg-net);
+  background: #F0F4FB;
+  transform: translateY(-1px);
+}
+.palette-item.dragging { opacity: 0.4; }
+.palette-item svg {
+  width: 26px; height: 26px;
+  color: var(--dwg-text-dim);
+}
+.palette-item.iot svg { color: var(--dwg-iot); }
+.palette-item span {
+  font-size: 8.5px;
+  color: var(--dwg-text-dim);
+  text-align: center;
+  line-height: 1.1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+.palette-footer {
+  padding: 8px;
+  border-top: 1px solid var(--dwg-border);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.btn-block {
+  padding: 8px;
+  border: 1px solid var(--dwg-border);
+  border-radius: var(--dwg-radius);
+  background: var(--dwg-panel-alt);
+  font-size: 12px;
+  cursor: pointer;
+  color: var(--dwg-text);
+  font-weight: 500;
+}
+.btn-block:hover { background: rgba(0,0,0,0.05); }
+
+/* ---------- Канвас ---------- */
+.drawing-canvas {
+  position: relative;
+  background: var(--dwg-bg);
+  overflow: hidden;
+  border-right: 1px solid var(--dwg-border);
+}
+/* Сетка чертежа через CSS */
+.drawing-canvas::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image:
+    /* Мелкая 10px */
+    linear-gradient(to right, rgba(0,0,0,0.03) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(0,0,0,0.03) 1px, transparent 1px),
+    /* Средняя 40px */
+    linear-gradient(to right, rgba(0,0,0,0.06) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(0,0,0,0.06) 1px, transparent 1px),
+    /* Крупная 200px */
+    linear-gradient(to right, rgba(0,0,0,0.1) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(0,0,0,0.1) 1px, transparent 1px);
+  background-size:
+    10px 10px, 10px 10px,
+    40px 40px, 40px 40px,
+    200px 200px, 200px 200px;
+  z-index: 0;
+}
+.canvas-toolbar {
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 12px;
+  background: rgba(250, 250, 250, 0.95);
+  border-bottom: 1px solid var(--dwg-border);
+  z-index: 5;
+  font-size: 11px;
+}
+[data-theme="dark"] .canvas-toolbar { background: rgba(28, 29, 32, 0.95); }
+.toolbar-info { color: var(--dwg-text-dim); font-family: var(--dwg-mono); }
+.toolbar-actions { display: flex; gap: 12px; }
+.chk-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--dwg-text-dim);
+  cursor: pointer;
+}
+.chk-inline input { accent-color: var(--dwg-net); }
+
+#planSvg {
+  position: absolute;
+  inset: 0;
+  width: 100%; height: 100%;
+  display: block;
+  z-index: 2;
+}
+#heatmapCanvas {
+  position: absolute;
+  inset: 0;
+  width: 100%; height: 100%;
+  pointer-events: none;
+  opacity: 0.7;
+  display: none;
+  z-index: 1;
+}
+
+.selection-rect {
+  position: absolute;
+  border: 1.5px dashed var(--dwg-net);
+  background: rgba(46, 94, 170, 0.08);
+  pointer-events: none;
+  z-index: 4;
+  display: none;
+}
+.snap-indicator {
+  position: absolute;
+  background: rgba(46, 94, 170, 0.15);
+  border: 1px solid var(--dwg-net);
+  pointer-events: none;
+  z-index: 3;
+  display: none;
+}
+.canvas-statusbar {
+  position: absolute;
+  bottom: 0; left: 0; right: 0;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 12px;
+  background: rgba(250, 250, 250, 0.95);
+  border-top: 1px solid var(--dwg-border);
+  font-size: 11px;
+  font-family: var(--dwg-mono);
+  color: var(--dwg-text-dim);
+  z-index: 5;
+}
+[data-theme="dark"] .canvas-statusbar { background: rgba(28, 29, 32, 0.95); }
+.canvas-statusbar .status-sep { color: var(--dwg-border); }
+.btn-xs {
+  padding: 2px 8px;
+  font-size: 10px;
+  background: var(--dwg-panel);
+  border: 1px solid var(--dwg-border);
+  border-radius: var(--dwg-radius);
+  cursor: pointer;
+  color: var(--dwg-text);
+}
+
+/* ---------- Панель справа — легенда / свойства ---------- */
+.legend-panel {
+  background: var(--dwg-panel);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.legend-tabs {
+  display: flex;
+  border-bottom: 1px solid var(--dwg-border);
+}
+.legend-tab {
+  flex: 1;
+  padding: 10px;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: var(--dwg-text-dim);
+  cursor: pointer;
+}
+.legend-tab:hover { background: rgba(0,0,0,0.03); }
+.legend-tab.active {
+  color: var(--dwg-net);
+  border-bottom-color: var(--dwg-net);
+}
+.legend-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px;
+}
+.legend-section { margin-bottom: 18px; }
+.legend-title {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.8px;
+  color: var(--dwg-text-dim);
+  padding-bottom: 6px;
+  margin-bottom: 8px;
+  border-bottom: 1px solid var(--dwg-line);
+  text-transform: uppercase;
+}
+.legend-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+  font-size: 12px;
+}
+.legend-row .sw {
+  width: 30px; height: 12px;
+  border: 1px solid var(--dwg-border);
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+.legend-row em {
+  font-style: normal;
+  color: var(--dwg-text-dim);
+  font-size: 10px;
+  margin-left: auto;
+  font-family: var(--dwg-mono);
+}
+.legend-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px 10px;
+}
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--dwg-text);
+}
+.legend-item .ic svg {
+  width: 20px; height: 20px;
+  color: var(--dwg-text-dim);
+  display: block;
+}
+.legend-item.iot .ic svg { color: var(--dwg-iot); }
+
+/* ---------- Свойства объекта ---------- */
+.props-empty {
+  padding: 40px 20px;
+  text-align: center;
+  color: var(--dwg-text-dim);
+  font-size: 12px;
+}
+.props-empty-icon { font-size: 32px; opacity: 0.4; margin-bottom: 8px; }
+
+.props-header {
+  padding: 10px;
+  border-bottom: 1px solid var(--dwg-border);
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+.props-header .icon {
+  width: 32px; height: 32px;
+  display: grid; place-items: center;
+  background: var(--dwg-panel-alt);
+  border: 1px solid var(--dwg-border);
+  border-radius: var(--dwg-radius);
+  font-size: 16px;
+}
+.props-header .title { font-size: 13px; font-weight: 700; }
+.props-header .subtitle { font-size: 10px; color: var(--dwg-text-dim); }
+
+.props-section {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--dwg-border);
+}
+.props-section h4 {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: var(--dwg-text-dim);
+  margin-bottom: 8px;
+}
+.props-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  margin-bottom: 6px;
+  font-size: 11px;
+}
+.props-row label { color: var(--dwg-text-dim); flex-shrink: 0; min-width: 60px; }
+.props-row input,
+.props-row select {
+  flex: 1;
+  height: 24px;
+  padding: 0 6px;
+  border: 1px solid var(--dwg-border);
+  border-radius: var(--dwg-radius);
+  font-size: 11px;
+  background: var(--dwg-panel-alt);
+  color: var(--dwg-text);
+  outline: none;
+  font-family: inherit;
+}
+.props-row input:focus, .props-row select:focus { border-color: var(--dwg-net); }
+
+/* ---------- Нижняя подпись ---------- */
+.drawing-footer {
+  display: flex;
+  justify-content: space-between;
+  padding: 6px 20px;
+  border-top: 2px solid var(--dwg-line);
+  background: var(--dwg-panel);
+  font-size: 10px;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: var(--dwg-text-dim);
+  font-family: var(--dwg-mono);
+}
+
+/* ---------- Модалки ---------- */
+.modal-mask {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,0.45);
+  display: none; align-items: center; justify-content: center;
+  z-index: 100;
+}
+.modal-mask.show { display: flex; }
+.modal {
+  background: var(--dwg-panel);
+  padding: 22px;
+  border-radius: 6px;
+  width: 380px;
+  max-width: 92vw;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: 0 12px 40px rgba(0,0,0,0.25);
+  color: var(--dwg-text);
+}
+.modal-wide { width: 460px; }
+.modal h2 { font-size: 16px; margin-bottom: 6px; }
+.modal-hint { font-size: 11px; color: var(--dwg-text-dim); margin-bottom: 14px; }
+.modal label {
+  display: block;
+  font-size: 11px;
+  color: var(--dwg-text-dim);
+  margin: 10px 0 4px;
+  font-weight: 500;
+}
+.modal input, .modal select, .modal textarea {
+  width: 100%;
+  padding: 7px 10px;
+  border: 1px solid var(--dwg-border);
+  border-radius: var(--dwg-radius);
+  font-size: 12px;
+  background: var(--dwg-panel-alt);
+  color: var(--dwg-text);
+  outline: none;
+  font-family: inherit;
+  box-sizing: border-box;
+}
+.modal input:focus, .modal select:focus { border-color: var(--dwg-net); }
+.row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.modal-btns {
+  display: flex; gap: 8px; margin-top: 18px;
+}
+.modal-btns button {
+  flex: 1;
+  padding: 9px;
+  border-radius: var(--dwg-radius);
+  border: none;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+}
+.modal-btns .cancel { background: var(--dwg-panel-alt); color: var(--dwg-text); }
+.modal-btns .ok { background: var(--dwg-net); color: #fff; }
+
+/* ---------- Стили для элементов внутри SVG ---------- */
+.svg-label {
+  font-family: var(--dwg-mono);
+  font-size: 7px;
+  fill: var(--dwg-text-dim);
+  font-weight: 600;
+  pointer-events: none;
+}
+.svg-label-big {
+  font-family: "Inter", sans-serif;
+  font-size: 11px;
+  fill: var(--dwg-text);
+  font-weight: 700;
+  pointer-events: none;
+}
+.svg-label-room {
+  font-family: "Inter", sans-serif;
+  font-size: 13px;
+  fill: var(--dwg-text);
+  font-weight: 700;
+  pointer-events: none;
+}
+.rj45-port {
+  fill: var(--dwg-net);
+  stroke: #fff;
+  stroke-width: 0.8;
+}
+.drag-ghost {
+  position: fixed;
+  pointer-events: none;
+  width: 40px; height: 40px;
+  z-index: 9999;
+  transform: translate(-50%, -50%);
+  color: var(--dwg-net);
+  filter: drop-shadow(0 3px 6px rgba(0,0,0,0.25));
+}
+.drag-ghost svg { width: 100%; height: 100%; }

@@ -1,13 +1,21 @@
 <!DOCTYPE html>
-<html lang="ru">
+<html lang="ru" data-theme="dark">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>CoworkWiFi Planner — проектирование Wi-Fi в коворкинге</title>
-<link rel="stylesheet" href="/static/css/style.css">
+<link rel="stylesheet" href="/static/style.css">
+<script>
+  // Быстрая инициализация темы до рендера (чтобы не мигало)
+  (function () {
+    var t = localStorage.getItem('cw_theme') || 'dark';
+    document.documentElement.setAttribute('data-theme', t);
+  })();
+</script>
 </head>
-<body>
+<body class="scroll-page">
 
+<!-- ═══════════ HERO ═══════════ -->
 <section class="hero">
   <div class="hero-logo">📡</div>
   <h1>CoworkWiFi Planner</h1>
@@ -16,7 +24,7 @@
     в коворкинге. Рисуйте стены, расставляйте точки доступа и устройства —
     и сразу видьте результат.
   </p>
-  <a href="/static/editor.html" class="hero-cta" id="startBtn">
+  <a href="/static/editor.html" class="hero-cta">
     Приступить к созданию
     <span class="arrow">→</span>
   </a>
@@ -28,6 +36,7 @@
   </div>
 </section>
 
+<!-- ═══════════ ЧТО УМЕЕТ ═══════════ -->
 <section class="section">
   <h2 class="section-title">Что умеет сайт</h2>
   <p class="section-sub">
@@ -72,10 +81,10 @@
       доступа для целевого покрытия.</p>
     </div>
     <div class="feature">
-      <div class="feature-icon">🔐</div>
-      <h3>Роли и права</h3>
-      <p>Администратор, инженер, аналитик — разграничение доступа
-      и защита данных.</p>
+      <div class="feature-icon">⚡</div>
+      <h3>PoE и СКС</h3>
+      <p>Расчёт PoE-бюджета, длин кабельных линий, автоматическое
+      подключение AP и устройств к коммутаторам.</p>
     </div>
     <div class="feature">
       <div class="feature-icon">📄</div>
@@ -86,6 +95,7 @@
   </div>
 </section>
 
+<!-- ═══════════ КАК ЭТО РАБОТАЕТ ═══════════ -->
 <section class="steps">
   <div class="section">
     <h2 class="section-title">Как это работает</h2>
@@ -115,6 +125,7 @@
   </div>
 </section>
 
+<!-- ═══════════ О ПРОЕКТЕ ═══════════ -->
 <section class="about">
   <div class="section">
     <h2 class="section-title">О проекте</h2>
@@ -137,7 +148,7 @@
         карт и их наложение на план помещения.
       </p>
       <div class="about-divider"></div>
-      <p style="font-size:13px;color:#999;margin:0">
+      <p style="font-size:13px;color:var(--text-muted);margin:0">
         Специальность: <strong>09.02.07</strong> — Информационные системы и программирование
       </p>
       <div class="author-info">
@@ -158,7 +169,8 @@
   </div>
 </section>
 
-<footer>
+<!-- ═══════════ ФУТЕР ═══════════ -->
+<footer class="app-footer">
   <p>📡 <strong>CoworkWiFi Planner</strong> — курсовой проект 2026–2027</p>
   <p>Скрыпкин М. Ю. · группа СИП-323/24 ·
     <a href="/docs" target="_blank">API-документация</a></p>
@@ -167,27 +179,14 @@
 <script src="/static/js/api.js"></script>
 <script>
 (function () {
-  var startBtn = document.getElementById('startBtn');
+  var startBtn = document.querySelector('.hero-cta');
   startBtn.addEventListener('click', function (e) {
     if (!API.getToken()) {
-      e.preventDefault();
-      window.location.href = '/static/login.html';
+      // Авторизация убрана (п.2 = A), но API-токен может быть не задан
+      // — оставляем возможность, если пользователь уже входил
     }
+    // Просто переходим в редактор
   });
-  if (API.getToken()) {
-    API.get('/api/auth/me').then(function (u) {
-      var hero = document.querySelector('.hero');
-      var badge = document.createElement('div');
-      badge.className = 'hero-user-badge';
-      badge.innerHTML = '<span>👤 ' + u.full_name + '</span>' +
-        '<button id="logoutLink">Выйти</button>';
-      hero.appendChild(badge);
-      document.getElementById('logoutLink').addEventListener('click', function () {
-        API.clearToken();
-        window.location.reload();
-      });
-    }).catch(function () { API.clearToken(); });
-  }
 })();
 </script>
 </body>

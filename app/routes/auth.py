@@ -1,4 +1,4 @@
-"""Регистрация, вход, текущий пользователь."""
+"""Регистрация и вход (опционально — авторизация на фронте отключена)."""
 from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.security import OAuth2PasswordRequestForm
@@ -8,7 +8,6 @@ from ..database import get_db
 from ..models import User, AuditLog
 from ..schemas import UserCreate, UserOut, TokenOut
 from ..security import hash_password, verify_password, create_access_token
-from ..deps import get_current_user
 
 router = APIRouter()
 
@@ -21,9 +20,12 @@ def register(data: UserCreate, db: Session = Depends(get_db)):
     role = "admin" if is_first else data.role
     if role not in ("admin", "engineer", "analyst"):
         role = "analyst"
-    user = User(email=data.email,
-                password_hash=hash_password(data.password),
-                full_name=data.full_name, role=role)
+    user = User(
+        email=data.email,
+        password_hash=hash_password(data.password),
+        full_name=data.full_name,
+        role=role,
+    )
     db.add(user)
     db.commit()
     db.refresh(user)
@@ -47,8 +49,3 @@ def login(form: OAuth2PasswordRequestForm = Depends(),
     db.commit()
     token = create_access_token({"sub": user.id, "role": user.role})
     return {"access_token": token, "token_type": "bearer", "user": user}
-
-
-@router.get("/me", response_model=UserOut)
-def me(user: User = Depends(get_current_user)):
-    return user

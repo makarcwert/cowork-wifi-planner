@@ -1,43 +1,62 @@
-/* Панель администратора. */
+/* ============================================================
+   CoworkWiFi Planner — панель администратора
+   ============================================================ */
 (function () {
+  'use strict';
+
   var me = null;
 
-  API.get('/api/auth/me').then(function (u) {
-    me = u;
-    document.getElementById('userName').textContent = u.full_name;
-    if (u.role !== 'admin') {
-      alert('Доступ только для администратора');
-      window.location.href = '/static/index.html';
-      return;
-    }
-    init();
-  }).catch(function () {
-    window.location.href = '/static/login.html';
-  });
+  // ---- Проверка авторизации ----
+  API.get('/api/auth/me')
+    .then(function (u) {
+      me = u;
+      var un = document.getElementById('userName');
+      if (un) un.textContent = u.full_name;
+
+      if (u.role !== 'admin') {
+        alert('Доступ только для администратора');
+        window.location.href = '/static/index.html';
+        return;
+      }
+      init();
+    })
+    .catch(function () {
+      window.location.href = '/static/login.html';
+    });
 
   document.getElementById('logoutBtn').addEventListener('click', function () {
     API.clearToken();
     window.location.href = '/static/login.html';
   });
 
+  // ============================================================
+  // ИНИЦИАЛИЗАЦИЯ
+  // ============================================================
   function init() {
+    // Вкладки
     document.querySelectorAll('.tab').forEach(function (t) {
       t.addEventListener('click', function () {
-        document.querySelectorAll('.tab').forEach(function (x) { x.classList.remove('active'); });
+        document.querySelectorAll('.tab').forEach(function (x) {
+          x.classList.remove('active');
+        });
         t.classList.add('active');
+
         var tab = t.dataset.tab;
         ['dashboard', 'users', 'projects', 'audit'].forEach(function (name) {
           var el = document.getElementById('tab-' + name);
           if (el) el.style.display = (name === tab) ? '' : 'none';
         });
+
         if (tab === 'dashboard') loadMetrics();
         if (tab === 'users') loadUsers();
         if (tab === 'projects') loadProjects();
         if (tab === 'audit') loadAudit();
       });
     });
+
     loadMetrics();
 
+    // Модалка "Новый пользователь"
     var userModal = document.getElementById('userModal');
     document.getElementById('addUserBtn').addEventListener('click', function () {
       document.getElementById('nuName').value = '';
@@ -60,16 +79,20 @@
         alert('Заполните все поля (пароль минимум 6 символов)');
         return;
       }
-      API.post('/api/users/', data).then(function () {
-        userModal.classList.remove('show');
-        loadUsers();
-      }).catch(function (err) { alert(err.message); });
+      API.post('/api/users/', data)
+        .then(function () {
+          userModal.classList.remove('show');
+          loadUsers();
+        })
+        .catch(function (err) { alert(err.message); });
     });
 
     document.getElementById('refreshAudit').addEventListener('click', loadAudit);
   }
 
-  // ============ ДАШБОРД ============
+  // ============================================================
+  // ДАШБОРД
+  // ============================================================
   function loadMetrics() {
     API.get('/api/admin/metrics').then(function (m) {
       renderMetricCards(m);
@@ -87,7 +110,7 @@
       card('Проектов', m.projects.total, m.projects.today + ' сегодня', 'info') +
       card('Точек доступа', m.aps.total, 'всего в системе', 'ok') +
       card('Устройств', m.devices.total, 'ПК, принтеры, IoT', 'info') +
-      card('Элементов', m.elements.total, 'стены, мебель', 'warn');
+      card('Элементов', m.elements.total, 'стены, мебель, фигуры', 'warn');
   }
 
   function card(label, value, sub, cls) {
@@ -110,9 +133,9 @@
 
   function renderRoleChart(byRole, total) {
     var roles = [
-      { key: 'admin',    name: 'Админы',    color: '#e74c3c' },
-      { key: 'engineer', name: 'Инженеры',  color: '#3498db' },
-      { key: 'analyst',  name: 'Аналитики', color: '#6c5ce7' }
+      { key: 'admin',    name: 'Админы',    color: '#f44336' },
+      { key: 'engineer', name: 'Инженеры',  color: '#0e639c' },
+      { key: 'analyst',  name: 'Аналитики', color: '#858585' }
     ];
     document.getElementById('roleChart').innerHTML = roles.map(function (r) {
       var c = byRole[r.key] || 0;
@@ -127,9 +150,9 @@
 
   function renderContentChart(m) {
     var items = [
-      { name: 'AP', count: m.aps.total, color: '#6c5ce7' },
+      { name: 'AP', count: m.aps.total, color: '#0e639c' },
       { name: 'Устройства', count: m.devices.total, color: '#3498db' },
-      { name: 'Элементы', count: m.elements.total, color: '#fdcb6e' }
+      { name: 'Элементы', count: m.elements.total, color: '#ffc107' }
     ];
     var max = Math.max.apply(null, items.map(function (i) { return i.count; })) || 1;
     document.getElementById('contentChart').innerHTML = items.map(function (i) {
@@ -142,7 +165,9 @@
     }).join('');
   }
 
-  // ============ ПОЛЬЗОВАТЕЛИ ============
+  // ============================================================
+  // ПОЛЬЗОВАТЕЛИ
+  // ============================================================
   function loadUsers() {
     API.get('/api/users/').then(function (users) {
       var tbody = document.querySelector('#usersTable tbody');
@@ -155,11 +180,12 @@
           : '<span class="badge blocked">заблокирован</span>';
         var self = me && me.id === u.id;
         var actions = self
-          ? '<span style="color:#bbb;font-size:11px">(это вы)</span>'
-          : '<button class="btn-sm" data-act="role" data-id="' + u.id + '">Сменить роль</button>' +
-            '<button class="btn-sm" data-act="block" data-id="' + u.id + '">' +
-              (u.is_active ? 'Заблокировать' : 'Разблокировать') + '</button>' +
-            '<button class="btn-sm danger" data-act="delete" data-id="' + u.id + '">Удалить</button>';
+          ? '<span style="color:var(--text-muted);font-size:11px">(это вы)</span>'
+          : '<button class="btn-xs" data-act="role" data-id="' + u.id + '">Сменить роль</button> ' +
+            '<button class="btn-xs" data-act="block" data-id="' + u.id + '">' +
+              (u.is_active ? 'Заблокировать' : 'Разблокировать') + '</button> ' +
+            '<button class="btn-xs" data-act="delete" data-id="' + u.id +
+              '" style="color:#f44336">Удалить</button>';
         tr.innerHTML =
           '<td>' + u.id + '</td>' +
           '<td>' + esc(u.full_name) + '</td>' +
@@ -201,7 +227,9 @@
     return { admin: 'Админ', engineer: 'Инженер', analyst: 'Аналитик' }[role] || role;
   }
 
-  // ============ ПРОЕКТЫ ============
+  // ============================================================
+  // ПРОЕКТЫ
+  // ============================================================
   function loadProjects() {
     API.get('/api/admin/projects').then(function (list) {
       var tbody = document.querySelector('#projectsTable tbody');
@@ -217,17 +245,17 @@
           '<td>' + p.id + '</td>' +
           '<td><strong>' + esc(p.name) + '</strong></td>' +
           '<td>' + (p.owner_name ? esc(p.owner_name) +
-            '<br><span style="color:#999;font-size:11px">' + esc(p.owner_email) + '</span>' : '—') + '</td>' +
+            '<br><span style="color:var(--text-muted);font-size:11px">' +
+            esc(p.owner_email) + '</span>' : '—') + '</td>' +
           '<td>' + p.width_m + '×' + p.height_m + ' м</td>' +
           '<td>' + p.elements_count + '</td>' +
           '<td>' + p.devices_count + '</td>' +
           '<td>' + p.aps_count + '</td>' +
           '<td>' + fmtDate(p.created_at) + '</td>' +
           '<td>' +
-            '<button class="btn-sm" data-pdf="' + p.id + '">📄 Отчёт</button>' +
-            '<button class="btn-sm" data-csv="' + p.id + '">📊 CSV</button>' +
-            '<button class="btn-sm" data-xlsx="' + p.id + '">📗 XLSX</button>' +
-            '<button class="btn-sm danger" data-del="' + p.id + '">Удалить</button>' +
+            '<a class="btn-xs" href="/static/editor.html" target="_blank">Открыть</a> ' +
+            '<button class="btn-xs" data-del="' + p.id +
+              '" style="color:#f44336">Удалить</button>' +
           '</td>';
         tbody.appendChild(tr);
       });
@@ -240,64 +268,12 @@
             .catch(function (err) { alert(err.message); });
         });
       });
-      tbody.querySelectorAll('button[data-csv]').forEach(function (b) {
-        b.addEventListener('click', function () { exportFile(parseInt(b.dataset.csv, 10), 'csv'); });
-      });
-      tbody.querySelectorAll('button[data-xlsx]').forEach(function (b) {
-        b.addEventListener('click', function () { exportFile(parseInt(b.dataset.xlsx, 10), 'xlsx'); });
-      });
-      tbody.querySelectorAll('button[data-pdf]').forEach(function (b) {
-        b.addEventListener('click', function () { exportPdf(parseInt(b.dataset.pdf, 10)); });
-      });
     });
   }
 
-  function exportFile(projectId, format) {
-    var token = API.getToken();
-    if (!token) { alert('Не авторизован'); return; }
-    fetch('/api/reports/' + projectId + '/' + format, {
-      headers: { 'Authorization': 'Bearer ' + token }
-    }).then(function (r) {
-      if (!r.ok) return r.json().then(function (e) { throw new Error(e.detail || 'Ошибка'); });
-      return r.blob();
-    }).then(function (blob) {
-      var url = URL.createObjectURL(blob);
-      var a = document.createElement('a');
-      a.href = url;
-      a.download = 'project_' + projectId + '.' + format;
-      a.click();
-      URL.revokeObjectURL(url);
-    }).catch(function (err) { alert(err.message); });
-  }
-
-  function exportPdf(projectId) {
-    API.get('/api/reports/' + projectId + '/data')
-      .then(function (data) {
-        Promise.all([
-          API.get('/api/projects/' + projectId + '/aps'),
-          API.get('/api/projects/' + projectId + '/devices'),
-          API.get('/api/projects/' + projectId + '/elements'),
-        ]).then(function (r) {
-          if (!window.Report) {
-            alert('Модуль отчёта не загружен');
-            return;
-          }
-          window.Report.generate({
-            project: data.project,
-            aps: r[0], devices: r[1], elements: r[2],
-            owner: data.owner ? (data.owner.name + ' <' + data.owner.email + '>') : '—',
-            user: data.generated_by,
-            stats: data.coverage_stats,
-            channels: data.channels,
-            heatmapDataUrl: null,
-            mode: 'rssi',
-          });
-        });
-      })
-      .catch(function (err) { alert('Ошибка: ' + err.message); });
-  }
-
-  // ============ ЖУРНАЛ ============
+  // ============================================================
+  // ЖУРНАЛ
+  // ============================================================
   function loadAudit() {
     API.get('/api/admin/audit-log?limit=100').then(function (logs) {
       var tbody = document.querySelector('#auditTable tbody');
@@ -312,7 +288,7 @@
         tr.innerHTML =
           '<td>' + fmtDate(l.created_at) + '</td>' +
           '<td>' + (l.user_name ? esc(l.user_name) : '—') +
-            '<br><span style="color:#999;font-size:11px">' +
+            '<br><span style="color:var(--text-muted);font-size:11px">' +
             (l.user_email ? esc(l.user_email) : '') + '</span></td>' +
           '<td><code>' + esc(l.action) + '</code></td>' +
           '<td>' + (l.entity || '—') + '</td>' +
@@ -322,19 +298,23 @@
     }).catch(function (err) { console.error(err); });
   }
 
-  // ============ Утилиты ============
+  // ============================================================
+  // УТИЛИТЫ
+  // ============================================================
   function fmtDate(iso) {
     if (!iso) return '—';
     try {
       var d = new Date(iso);
       if (isNaN(d.getTime())) return iso;
       var pad = function (n) { return n < 10 ? '0' + n : n; };
-      return pad(d.getDate()) + '.' + pad(d.getMonth() + 1) + '.' + d.getFullYear() +
-        ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+      return pad(d.getDate()) + '.' + pad(d.getMonth() + 1) + '.' +
+             d.getFullYear() + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes());
     } catch (e) { return iso; }
   }
+
   function esc(s) {
-    return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;')
+    return String(s || '')
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;')
       .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   }
 })();

@@ -1,16 +1,24 @@
 <!DOCTYPE html>
-<html lang="ru">
+<html lang="ru" data-theme="dark">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Вход — CoworkWiFi Planner</title>
-<link rel="stylesheet" href="/static/css/style.css">
+<link rel="stylesheet" href="/static/style.css">
+<script>
+  (function () {
+    var t = localStorage.getItem('cw_theme') || 'dark';
+    document.documentElement.setAttribute('data-theme', t);
+  })();
+</script>
 </head>
 <body class="auth-page">
+
   <div class="auth-card">
     <h1>📡 CoworkWiFi Planner</h1>
-    <p class="subtitle">Программа проверки зоны покрытия Wi-Fi</p>
+    <p class="subtitle">Вход в систему</p>
 
+    <!-- Вход -->
     <form id="loginForm">
       <label>Email
         <input type="email" id="email" required placeholder="admin@local">
@@ -18,13 +26,14 @@
       <label>Пароль
         <input type="password" id="password" required placeholder="••••••">
       </label>
-      <button type="submit" class="btn-primary">Войти</button>
+      <button type="submit">Войти</button>
     </form>
 
     <p class="hint">
       Нет аккаунта? <a href="#" id="showRegister">Зарегистрироваться</a>
     </p>
 
+    <!-- Регистрация -->
     <form id="registerForm" style="display:none">
       <label>ФИО
         <input type="text" id="regName" required placeholder="Иван Иванов">
@@ -33,7 +42,8 @@
         <input type="email" id="regEmail" required placeholder="user@example.com">
       </label>
       <label>Пароль
-        <input type="password" id="regPassword" required minlength="6" placeholder="минимум 6 символов">
+        <input type="password" id="regPassword" required minlength="6"
+               placeholder="минимум 6 символов">
       </label>
       <label>Роль
         <select id="regRole">
@@ -42,13 +52,17 @@
           <option value="admin">Администратор</option>
         </select>
       </label>
-      <button type="submit" class="btn-primary">Создать аккаунт</button>
+      <button type="submit">Создать аккаунт</button>
     </form>
 
     <div id="msg" class="msg"></div>
+
+    <p class="hint" style="margin-top:24px">
+      <a href="/static/editor.html">→ Продолжить без входа</a>
+    </p>
   </div>
 
-  <script src="/static/js/api.js"></script>
-  <script src="/static/js/auth.js"></script>
+<script src="/static/js/api.js"></script>
+<script src="/static/js/auth.js"></script>
 </body>
 </html>
