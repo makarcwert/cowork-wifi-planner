@@ -10,6 +10,155 @@
   var t = localStorage.getItem('cw_theme') || 'dark';
   document.documentElement.setAttribute('data-theme', t);
 </script>
+<style>
+  /* Локальные стили страницы измерений */
+  .meas-layout {
+    display: grid;
+    grid-template-columns: 1fr 360px;
+    gap: 16px;
+    align-items: start;
+  }
+  @media (max-width: 900px) {
+    .meas-layout { grid-template-columns: 1fr; }
+  }
+
+  .card-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 14px;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+  .card-head h2 { margin: 0; }
+
+  .toolbar-inline {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+
+  .btn-sm {
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 6px 12px;
+    border-radius: 3px;
+    cursor: pointer;
+    font-size: 12px;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+  }
+  .btn-sm:hover { background: var(--border); }
+  .btn-sm.primary {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #fff;
+  }
+  .btn-sm.primary:hover { background: var(--accent-hover); }
+  .btn-sm.danger { color: #f44336; }
+  .btn-sm.danger:hover { background: #f4433620; }
+
+  .meas-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+  }
+  .meas-table th {
+    text-align: left;
+    padding: 8px 10px;
+    background: var(--panel-2);
+    color: var(--text-dim);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: .5px;
+    border-bottom: 1px solid var(--border);
+  }
+  .meas-table td {
+    padding: 8px 10px;
+    border-bottom: 1px solid var(--border);
+  }
+  .meas-table tr:hover td { background: var(--panel-2); }
+  .meas-table tr.selected td { background: rgba(14,99,156,0.15); }
+
+  .dot {
+    display: inline-block;
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    margin-right: 6px;
+    vertical-align: middle;
+    border: 1px solid rgba(255,255,255,.3);
+  }
+
+  .empty-state {
+    text-align: center;
+    padding: 40px 20px;
+    color: var(--text-dim);
+  }
+  .empty-state .big { font-size: 40px; opacity: .4; margin-bottom: 10px; }
+
+  .form-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+  .form-grid .full { grid-column: 1 / -1; }
+
+  .form-row label {
+    display: block;
+    font-size: 11px;
+    color: var(--text-dim);
+    margin-bottom: 4px;
+    text-transform: uppercase;
+    letter-spacing: .5px;
+  }
+  .form-row input, .form-row select {
+    width: 100%;
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 7px 9px;
+    border-radius: 3px;
+    font-size: 12px;
+    outline: none;
+    font-family: inherit;
+  }
+  .form-row input:focus, .form-row select:focus { border-color: var(--accent); }
+
+  .diff-box {
+    background: var(--panel-2);
+    border-radius: 4px;
+    padding: 12px;
+    margin-top: 12px;
+    font-size: 12px;
+    line-height: 1.6;
+    border-left: 3px solid var(--border);
+  }
+
+  .stats-mini {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px;
+    margin-bottom: 14px;
+  }
+  .stat-mini {
+    background: var(--panel-2);
+    border-radius: 4px;
+    padding: 10px;
+  }
+  .stat-mini .lbl {
+    font-size: 10px;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: .5px;
+    margin-bottom: 4px;
+  }
+  .stat-mini .val {
+    font-size: 16px;
+    font-weight: 600;
+  }
+</style>
 </head>
 <body>
 
@@ -32,32 +181,129 @@
 
 <main class="container">
   <h1>Измерения</h1>
+
+  <!-- Выбор проекта -->
   <div class="card">
-    <h3>Программа проверки зоны покрытия</h3>
-    <p style="color:var(--text-dim);font-size:12px;line-height:1.6;margin-bottom:14px">
-      Раздел в разработке. Основной функционал измерений RSSI/SNR реализован
-      прямо в редакторе: инструмент <b>📍 Замер</b> на левой панели.
-    </p>
-    <a class="btn-primary-sm" href="/static/editor.html">Открыть редактор →</a>
+    <div class="card-head">
+      <h2>Проект</h2>
+      <div class="toolbar-inline">
+        <select id="projectSelect" class="form-row" style="min-width:240px">
+          <option value="">— Выберите проект —</option>
+        </select>
+      </div>
+    </div>
+    <div id="projectInfo" style="font-size:12px;color:var(--text-dim)">
+      Выберите проект, чтобы увидеть список замеров.
+    </div>
   </div>
 
-  <div class="card">
-    <h3>API измерений</h3>
-    <p style="color:var(--text-dim);font-size:12px;line-height:1.6;margin-bottom:10px">
-      Программа обеспечивает измерение уровня сигнала (RSSI), отношения
-      сигнал/шум (SNR), определение интерференции. API доступен по адресам:
-    </p>
-    <table class="table">
-      <thead><tr><th>Метод</th><th>URL</th><th>Назначение</th></tr></thead>
-      <tbody>
-        <tr><td>POST</td><td><code>/api/measurements/{plan_id}</code></td><td>Добавить замер</td></tr>
-        <tr><td>GET</td><td><code>/api/measurements/{plan_id}</code></td><td>Список замеров</td></tr>
-        <tr><td>POST</td><td><code>/api/measurements/{plan_id}/calculate?x=&y=</code></td><td>Расчёт RSSI в точке</td></tr>
-        <tr><td>POST</td><td><code>/api/measurements/{plan_id}/preview</code></td><td>Тепловая карта RSSI</td></tr>
-        <tr><td>POST</td><td><code>/api/measurements/{plan_id}/snr</code></td><td>Карта SNR</td></tr>
-        <tr><td>POST</td><td><code>/api/measurements/{plan_id}/interference</code></td><td>Карта интерференции</td></tr>
-      </tbody>
-    </table>
+  <div class="meas-layout" id="measLayout" style="display:none">
+
+    <!-- ЛЕВАЯ КОЛОНКА: список замеров -->
+    <div>
+      <div class="card">
+        <div class="card-head">
+          <h2>Список замеров (<span id="measCount">0</span>)</h2>
+          <div class="toolbar-inline">
+            <button class="btn-sm" id="btnRefresh" title="Обновить">🔄 Обновить</button>
+            <button class="btn-sm" id="btnExportCsv" title="Скачать CSV">📄 CSV</button>
+            <button class="btn-sm" id="btnExportXlsx" title="Скачать XLSX">📊 XLSX</button>
+          </div>
+        </div>
+        <div id="measListWrap">
+          <div class="empty-state">
+            <div class="big">📍</div>
+            <div>Замеров пока нет</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ПРАВАЯ КОЛОНКА: форма + статистика -->
+    <div>
+
+      <!-- Статистика -->
+      <div class="card" id="statsCard" style="display:none">
+        <h3>📊 Статистика</h3>
+        <div class="stats-mini">
+          <div class="stat-mini">
+            <div class="lbl">Всего</div>
+            <div class="val" id="statTotal">0</div>
+          </div>
+          <div class="stat-mini">
+            <div class="lbl">С фактом</div>
+            <div class="val" id="statWithFact">0</div>
+          </div>
+          <div class="stat-mini">
+            <div class="lbl">Средн. Δ</div>
+            <div class="val" id="statAvgDiff">—</div>
+          </div>
+          <div class="stat-mini">
+            <div class="lbl">Макс. Δ</div>
+            <div class="val" id="statMaxDiff">—</div>
+          </div>
+        </div>
+        <div id="statProgress" style="display:none">
+          <div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:6px">
+            <span style="color:var(--text-dim)">Точность модели (Δ ≤ 3 дБ)</span>
+            <span id="statGoodPct" style="font-weight:600">0%</span>
+          </div>
+          <div style="height:6px;background:var(--panel-2);border-radius:3px;overflow:hidden">
+            <div id="statGoodBar" style="height:100%;width:0%;background:#4caf50;transition:width .3s"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Форма -->
+      <div class="card" id="formCard">
+        <h3 id="formTitle">📝 Новый замер</h3>
+        <div class="form-grid">
+          <div class="form-row full">
+            <label>Название</label>
+            <input type="text" id="fName" placeholder="Замер 1">
+          </div>
+          <div class="form-row">
+            <label>X, м</label>
+            <input type="number" step="0.1" id="fX" value="5">
+          </div>
+          <div class="form-row">
+            <label>Y, м</label>
+            <input type="number" step="0.1" id="fY" value="5">
+          </div>
+          <div class="form-row">
+            <label>RSSI, дБм *</label>
+            <input type="number" step="0.1" id="fRssi" value="-65">
+          </div>
+          <div class="form-row">
+            <label>SNR, дБ</label>
+            <input type="number" step="0.1" id="fSnr" placeholder="—">
+          </div>
+          <div class="form-row full">
+            <label>Интерференция, дБм</label>
+            <input type="number" step="0.1" id="fInter" placeholder="—">
+          </div>
+          <div class="form-row full">
+            <label>Режим</label>
+            <select id="fMode">
+              <option value="manual" selected>Ручной (факт с устройства)</option>
+              <option value="auto">Автоматический (по модели)</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="diff-box" id="diffBox">
+          Введите X, Y и RSSI — покажу расхождение с моделью.
+        </div>
+
+        <div class="toolbar-inline" style="margin-top:14px">
+          <button class="btn-sm primary" id="btnSave" style="flex:1">💾 Сохранить</button>
+          <button class="btn-sm" id="btnCalc" style="flex:1">🎯 Рассчитать по модели</button>
+          <button class="btn-sm" id="btnCancel" style="display:none">Отмена</button>
+          <button class="btn-sm danger" id="btnDelete" style="display:none">🗑 Удалить</button>
+        </div>
+      </div>
+
+    </div>
   </div>
 </main>
 
@@ -70,6 +316,11 @@
 <script src="/static/js/api.js"></script>
 <script>
 (function () {
+  'use strict';
+
+  // ============================================================
+  // ТЕМА / ПОЛЬЗОВАТЕЛЬ
+  // ============================================================
   var tb = document.getElementById('themeToggle');
   tb.textContent = (localStorage.getItem('cw_theme') || 'dark') === 'dark' ? '☀' : '🌙';
   tb.addEventListener('click', function () {
@@ -80,6 +331,7 @@
   });
 
   if (!API.getToken()) { window.location.href = '/static/login.html'; return; }
+
   API.get('/api/auth/me').then(function (u) {
     document.getElementById('userName').textContent = u.full_name;
     document.getElementById('userAvatar').textContent =
@@ -94,6 +346,525 @@
     API.clearToken();
     window.location.href = '/static/login.html';
   });
+
+  // ============================================================
+  // СОСТОЯНИЕ
+  // ============================================================
+  var project = null;         // выбранный проект
+  var measurements = [];      // список замеров
+  var selectedId = null;      // id редактируемого замера (null = создание)
+  var aps = [];               // AP текущего проекта (для расчёта модели)
+  var walls = [];             // стены проекта (для расчёта модели)
+
+  var PX_PER_M = 40;          // не используется, но оставлено для совместимости
+
+  // ============================================================
+  // ФИЗИКА (упрощённая копия того, что в editor.js)
+  // ============================================================
+  var MATERIALS = {
+    brick:    { loss: 15 },
+    concrete: { loss: 25 },
+    drywall:  { loss: 4 },
+    wood:     { loss: 6 },
+    glass:    { loss: 3 }
+  };
+
+  function fspl(d, f) {
+    if (d <= 0.1) d = 0.1;
+    return 20 * Math.log10(d) + 20 * Math.log10(f) - 27.55;
+  }
+
+  function segInt(p1, p2, p3, p4) {
+    var d = (p2.x - p1.x) * (p4.y - p3.y) - (p2.y - p1.y) * (p4.x - p3.x);
+    if (Math.abs(d) < 1e-9) return false;
+    var t = ((p3.x - p1.x) * (p4.y - p3.y) - (p3.y - p1.y) * (p4.x - p3.x)) / d;
+    var u = ((p3.x - p1.x) * (p2.y - p1.y) - (p3.y - p1.y) * (p2.x - p1.x)) / d;
+    return t > 0 && t < 1 && u > 0 && u < 1;
+  }
+
+  function wallLoss(ap, px, py) {
+    var loss = 0;
+    for (var i = 0; i < walls.length; i++) {
+      var w = walls[i];
+      if (w.type !== 'wall') continue;
+      if (segInt({ x: ap.x, y: ap.y }, { x: px, y: py },
+                 { x: w.x1, y: w.y1 }, { x: w.x2, y: w.y2 })) {
+        loss += (MATERIALS[w.material] || MATERIALS.concrete).loss;
+      }
+    }
+    return loss;
+  }
+
+  function signalAt(ap, x, y) {
+    var dz = 2.0;   // высота 3 м − 1.2 м (клиент)
+    var dx = ap.x - x, dy = ap.y - y;
+    var d = Math.sqrt(dx * dx + dy * dy + dz * dz);
+    var freq = ap.freq || (ap.band === '2.4' ? 2400 : ap.band === '6' ? 6000 : 5000);
+    return (ap.power || 20) + (ap.gain || 5) - fspl(d, freq) - wallLoss(ap, x, y);
+  }
+
+  function coverageAt(x, y) {
+    if (!aps.length) return -100;
+    var best = -Infinity;
+    for (var i = 0; i < aps.length; i++) {
+      var s = signalAt(aps[i], x, y);
+      if (s > best) best = s;
+    }
+    return best;
+  }
+
+  function diffColor(d) {
+    if (d == null) return 'var(--text-dim)';
+    if (d <= 3) return '#4caf50';
+    if (d <= 6) return '#ffc107';
+    return '#f44336';
+  }
+
+  function diffLabel(d) {
+    if (d == null) return '—';
+    if (d <= 3) return 'отлично';
+    if (d <= 6) return 'приемлемо';
+    return 'калибровать';
+  }
+
+  function fmtDate(iso) {
+    if (!iso) return '—';
+    try {
+      var d = new Date(iso);
+      var p = function (n) { return n < 10 ? '0' + n : n; };
+      return p(d.getDate()) + '.' + p(d.getMonth() + 1) + ' ' +
+             p(d.getHours()) + ':' + p(d.getMinutes());
+    } catch (e) { return iso; }
+  }
+
+  function esc(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+
+  // ============================================================
+  // ЗАГРУЗКА ДАННЫХ
+  // ============================================================
+  function loadProjects() {
+    API.get('/api/projects/').then(function (list) {
+      var sel = document.getElementById('projectSelect');
+      sel.innerHTML = '<option value="">— Выберите проект —</option>';
+      list.forEach(function (p) {
+        var o = document.createElement('option');
+        o.value = p.id;
+        o.textContent = p.name + ' · ' + p.width_m + '×' + p.height_m + ' м';
+        sel.appendChild(o);
+      });
+      if (list.length) {
+        sel.value = list[0].id;
+        selectProject(list[0].id);
+      }
+    }).catch(function (err) {
+      console.warn('Не удалось загрузить проекты:', err);
+    });
+  }
+
+  function selectProject(id) {
+    if (!id) {
+      project = null;
+      aps = [];
+      walls = [];
+      measurements = [];
+      document.getElementById('measLayout').style.display = 'none';
+      document.getElementById('statsCard').style.display = 'none';
+      document.getElementById('projectInfo').textContent = 'Выберите проект.';
+      return;
+    }
+
+    API.get('/api/projects/' + id).then(function (p) {
+      project = p;
+      document.getElementById('measLayout').style.display = '';
+      document.getElementById('projectInfo').innerHTML =
+        '<b>' + esc(p.name) + '</b> · ' + p.width_m + '×' + p.height_m + ' м · ' +
+        'площадь ' + (p.width_m * p.height_m).toFixed(1) + ' м²';
+
+      // Параллельно грузим AP, стены и замеры
+      Promise.all([
+        API.get('/api/projects/' + id + '/aps').catch(function () { return []; }),
+        API.get('/api/projects/' + id + '/elements').catch(function () { return []; }),
+        API.get('/api/measurements/' + id).catch(function () { return []; })
+      ]).then(function (r) {
+        aps = (r[0] || []).map(function (ap) {
+          return {
+            id: ap.id, name: ap.name,
+            x: ap.x, y: ap.y,
+            power: ap.tx_power_dbm || 20,
+            gain: ap.antenna_gain || 5,
+            band: ap.band || '5',
+            freq: ap.band === '2.4' ? 2400 : ap.band === '6' ? 6000 : 5000,
+            channel: ap.channel || 44
+          };
+        });
+        walls = (r[1] || []).filter(function (el) {
+          return el.type === 'wall' || el.type === 'window';
+        });
+        measurements = r[2] || [];
+
+        renderAll();
+      });
+    }).catch(function (err) {
+      alert('Не удалось загрузить проект: ' + err.message);
+    });
+  }
+
+  // ============================================================
+  // РЕНДЕР
+  // ============================================================
+  function renderAll() {
+    renderList();
+    renderStats();
+    updateDiffBox();
+  }
+
+  function renderList() {
+    document.getElementById('measCount').textContent = measurements.length;
+    var wrap = document.getElementById('measListWrap');
+
+    if (!measurements.length) {
+      wrap.innerHTML =
+        '<div class="empty-state">' +
+          '<div class="big">📍</div>' +
+          '<div>Замеров пока нет</div>' +
+          '<div style="margin-top:8px;font-size:11px">' +
+            'Заполните форму справа или создайте замеры в редакторе (🔳 автозамеры)' +
+          '</div>' +
+        '</div>';
+      return;
+    }
+
+    var html = '<table class="meas-table">' +
+      '<thead><tr>' +
+        '<th style="width:24px"></th>' +
+        '<th>Имя</th>' +
+        '<th style="text-align:right">X, м</th>' +
+        '<th style="text-align:right">Y, м</th>' +
+        '<th style="text-align:right">RSSI</th>' +
+        '<th style="text-align:right">План</th>' +
+        '<th style="text-align:right">Δ, дБ</th>' +
+        '<th>Режим</th>' +
+        '<th></th>' +
+      '</tr></thead><tbody>';
+
+    measurements.forEach(function (m) {
+      var plan = coverageAt(m.x, m.y);
+      var isManual = m.mode === 'manual';
+      var diff = isManual ? Math.abs(m.rssi - plan) : null;
+      var color = isManual ? diffColor(diff) : 'var(--accent)';
+
+      html += '<tr data-id="' + m.id + '" class="' + (selectedId === m.id ? 'selected' : '') + '">' +
+        '<td><span class="dot" style="background:' + color + '"></span></td>' +
+        '<td><b>' + esc(m.name || 'Замер') + '</b></td>' +
+        '<td style="text-align:right">' + m.x.toFixed(1) + '</td>' +
+        '<td style="text-align:right">' + m.y.toFixed(1) + '</td>' +
+        '<td style="text-align:right;color:#2196f3;font-weight:600">' + m.rssi.toFixed(1) + '</td>' +
+        '<td style="text-align:right;color:var(--accent)">' + plan.toFixed(1) + '</td>' +
+        '<td style="text-align:right;font-weight:600;color:' + color + '">' +
+          (diff != null ? diff.toFixed(1) : '—') + '</td>' +
+        '<td>' +
+          (isManual
+            ? '<span style="color:#2196f3;font-size:10px">ручной</span>'
+            : '<span style="color:var(--text-dim);font-size:10px">авто</span>') +
+        '</td>' +
+        '<td>' +
+          '<button class="btn-sm" data-act="edit" data-id="' + m.id + '" title="Редактировать">✎</button> ' +
+          '<button class="btn-sm" data-act="recalc" data-id="' + m.id + '" title="Сбросить к модели">🔄</button> ' +
+          '<button class="btn-sm danger" data-act="delete" data-id="' + m.id + '" title="Удалить">🗑</button>' +
+        '</td>' +
+      '</tr>';
+    });
+
+    html += '</tbody></table>';
+    wrap.innerHTML = html;
+
+    // Обработчики
+    wrap.querySelectorAll('tr[data-id]').forEach(function (tr) {
+      tr.addEventListener('click', function (e) {
+        if (e.target.dataset.act) return;
+        openEdit(parseInt(tr.dataset.id, 10));
+      });
+    });
+    wrap.querySelectorAll('button[data-act]').forEach(function (b) {
+      b.addEventListener('click', function (e) {
+        e.stopPropagation();
+        var id = parseInt(b.dataset.id, 10);
+        var act = b.dataset.act;
+        if (act === 'edit') openEdit(id);
+        else if (act === 'recalc') recalcOne(id);
+        else if (act === 'delete') deleteOne(id);
+      });
+    });
+  }
+
+  function renderStats() {
+    var card = document.getElementById('statsCard');
+    if (!measurements.length) { card.style.display = 'none'; return; }
+    card.style.display = '';
+
+    var withFact = measurements.filter(function (m) { return m.mode === 'manual'; });
+    document.getElementById('statTotal').textContent = measurements.length;
+    document.getElementById('statWithFact').textContent = withFact.length;
+
+    if (!withFact.length) {
+      document.getElementById('statAvgDiff').textContent = '—';
+      document.getElementById('statMaxDiff').textContent = '—';
+      document.getElementById('statProgress').style.display = 'none';
+      return;
+    }
+
+    var diffs = withFact.map(function (m) {
+      return Math.abs(m.rssi - coverageAt(m.x, m.y));
+    });
+    var avg = diffs.reduce(function (a, b) { return a + b; }, 0) / diffs.length;
+    var max = Math.max.apply(null, diffs);
+    var good = diffs.filter(function (d) { return d <= 3; }).length;
+    var goodPct = (good / diffs.length) * 100;
+
+    document.getElementById('statAvgDiff').textContent = avg.toFixed(1) + ' дБ';
+    document.getElementById('statAvgDiff').style.color = diffColor(avg);
+    document.getElementById('statMaxDiff').textContent = max.toFixed(1) + ' дБ';
+    document.getElementById('statMaxDiff').style.color = diffColor(max);
+
+    document.getElementById('statProgress').style.display = '';
+    document.getElementById('statGoodPct').textContent = goodPct.toFixed(0) + '%';
+    document.getElementById('statGoodPct').style.color = diffColor(avg);
+    var bar = document.getElementById('statGoodBar');
+    bar.style.width = goodPct + '%';
+    bar.style.background = diffColor(avg);
+  }
+
+  // ============================================================
+  // ФОРМА
+  // ============================================================
+  function openEdit(id) {
+    var m = measurements.find(function (x) { return x.id === id; });
+    if (!m) return;
+
+    selectedId = id;
+    document.getElementById('formTitle').textContent = '✎ Редактирование замера #' + id;
+    document.getElementById('fName').value = m.name || '';
+    document.getElementById('fX').value = m.x;
+    document.getElementById('fY').value = m.y;
+    document.getElementById('fRssi').value = m.rssi;
+    document.getElementById('fSnr').value = m.snr != null ? m.snr : '';
+    document.getElementById('fInter').value = m.interference != null ? m.interference : '';
+    document.getElementById('fMode').value = m.mode || 'manual';
+
+    document.getElementById('btnCancel').style.display = '';
+    document.getElementById('btnDelete').style.display = '';
+    renderList();
+    updateDiffBox();
+    document.getElementById('fName').focus();
+  }
+
+  function resetForm() {
+    selectedId = null;
+    document.getElementById('formTitle').textContent = '📝 Новый замер';
+    var n = measurements.length + 1;
+    document.getElementById('fName').value = 'Замер ' + n;
+    document.getElementById('fX').value = project ? (project.width_m / 2).toFixed(1) : 5;
+    document.getElementById('fY').value = project ? (project.height_m / 2).toFixed(1) : 5;
+    document.getElementById('fRssi').value = -65;
+    document.getElementById('fSnr').value = '';
+    document.getElementById('fInter').value = '';
+    document.getElementById('fMode').value = 'manual';
+    document.getElementById('btnCancel').style.display = 'none';
+    document.getElementById('btnDelete').style.display = 'none';
+    renderList();
+    updateDiffBox();
+  }
+
+  function updateDiffBox() {
+    var box = document.getElementById('diffBox');
+    var x = parseFloat(document.getElementById('fX').value);
+    var y = parseFloat(document.getElementById('fY').value);
+    var rssi = parseFloat(document.getElementById('fRssi').value);
+
+    if (isNaN(x) || isNaN(y)) {
+      box.innerHTML = 'Введите X и Y';
+      box.style.borderLeftColor = 'var(--border)';
+      return;
+    }
+
+    var plan = coverageAt(x, y);
+    var mode = document.getElementById('fMode').value;
+
+    if (mode === 'auto' || isNaN(rssi)) {
+      box.innerHTML = 'Модель в точке (' + x.toFixed(1) + ', ' + y.toFixed(1) + '): ' +
+        '<b style="color:var(--accent)">' + plan.toFixed(1) + ' дБм</b>';
+      box.style.borderLeftColor = 'var(--accent)';
+      return;
+    }
+
+    var d = Math.abs(rssi - plan);
+    var color = diffColor(d);
+    box.innerHTML =
+      'План: <b>' + plan.toFixed(1) + '</b> дБм · ' +
+      'Факт: <b style="color:#2196f3">' + rssi.toFixed(1) + '</b> дБм<br>' +
+      'Расхождение: <b style="color:' + color + '">' + d.toFixed(1) + ' дБ</b> ' +
+      '(' + diffLabel(d) + ')';
+    box.style.borderLeftColor = color;
+  }
+
+  ['fX', 'fY', 'fRssi', 'fMode'].forEach(function (id) {
+    document.getElementById(id).addEventListener('input', updateDiffBox);
+    document.getElementById(id).addEventListener('change', updateDiffBox);
+  });
+
+  // ============================================================
+  // ДЕЙСТВИЯ
+  // ============================================================
+  function collectForm() {
+    var x = parseFloat(document.getElementById('fX').value);
+    var y = parseFloat(document.getElementById('fY').value);
+    var rssi = parseFloat(document.getElementById('fRssi').value);
+    if (isNaN(x) || isNaN(y)) { alert('Введите X и Y'); return null; }
+    if (isNaN(rssi)) { alert('Введите RSSI'); return null; }
+    return {
+      name: document.getElementById('fName').value || 'Замер',
+      x: x, y: y,
+      rssi: rssi,
+      snr: document.getElementById('fSnr').value ? parseFloat(document.getElementById('fSnr').value) : null,
+      interference: document.getElementById('fInter').value ? parseFloat(document.getElementById('fInter').value) : null,
+      mode: document.getElementById('fMode').value || 'manual'
+    };
+  }
+
+  document.getElementById('btnSave').addEventListener('click', function () {
+    if (!project) return alert('Выберите проект');
+    var data = collectForm();
+    if (!data) return;
+
+    var promise;
+    if (selectedId) {
+      promise = API.put('/api/measurements/' + selectedId + '/update', data);
+    } else {
+      promise = API.post('/api/measurements/' + project.id, data);
+    }
+
+    promise.then(function () {
+      return API.get('/api/measurements/' + project.id);
+    }).then(function (list) {
+      measurements = list || [];
+      resetForm();
+      renderAll();
+    }).catch(function (err) {
+      alert('Ошибка сохранения: ' + err.message);
+    });
+  });
+
+  document.getElementById('btnCalc').addEventListener('click', function () {
+    var x = parseFloat(document.getElementById('fX').value);
+    var y = parseFloat(document.getElementById('fY').value);
+    if (isNaN(x) || isNaN(y)) return alert('Введите X и Y');
+    var plan = coverageAt(x, y);
+    document.getElementById('fRssi').value = plan.toFixed(1);
+    document.getElementById('fMode').value = 'auto';
+    updateDiffBox();
+  });
+
+  document.getElementById('btnCancel').addEventListener('click', resetForm);
+
+  document.getElementById('btnDelete').addEventListener('click', function () {
+    if (!selectedId) return;
+    deleteOne(selectedId);
+  });
+
+  function deleteOne(id) {
+    if (!confirm('Удалить замер #' + id + '?')) return;
+    API.del('/api/measurements/' + id).then(function () {
+      return API.get('/api/measurements/' + project.id);
+    }).then(function (list) {
+      measurements = list || [];
+      if (selectedId === id) resetForm();
+      renderAll();
+    }).catch(function (err) { alert(err.message); });
+  }
+
+  function recalcOne(id) {
+    var m = measurements.find(function (x) { return x.id === id; });
+    if (!m) return;
+    var plan = coverageAt(m.x, m.y);
+    API.put('/api/measurements/' + id + '/update', {
+      name: m.name, x: m.x, y: m.y,
+      rssi: +plan.toFixed(1),
+      snr: m.snr, interference: m.interference,
+      mode: 'auto'
+    }).then(function () {
+      return API.get('/api/measurements/' + project.id);
+    }).then(function (list) {
+      measurements = list || [];
+      renderAll();
+    }).catch(function (err) { alert(err.message); });
+  }
+
+  // ============================================================
+  // ЭКСПОРТ
+  // ============================================================
+  document.getElementById('btnRefresh').addEventListener('click', function () {
+    if (project) selectProject(project.id);
+  });
+
+  document.getElementById('btnExportCsv').addEventListener('click', function () {
+    if (!measurements.length) return alert('Нет замеров');
+
+    var lines = ['id;name;x_m;y_m;rssi_dbm;plan_dbm;diff_db;snr_db;interference_dbm;mode;measured_at'];
+    measurements.forEach(function (m) {
+      var plan = coverageAt(m.x, m.y);
+      var diff = m.mode === 'manual' ? Math.abs(m.rssi - plan).toFixed(2) : '';
+      lines.push([
+        m.id,
+        '"' + (m.name || '').replace(/"/g, '""') + '"',
+        m.x, m.y,
+        m.rssi.toFixed(2),
+        plan.toFixed(2),
+        diff,
+        m.snr != null ? m.snr : '',
+        m.interference != null ? m.interference : '',
+        m.mode,
+        m.measured_at || ''
+      ].join(';'));
+    });
+
+    var csv = '\uFEFF' + lines.join('\n');
+    var blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'measurements_' + project.name + '.csv';
+    a.click();
+    URL.revokeObjectURL(a.href);
+  });
+
+  document.getElementById('btnExportXlsx').addEventListener('click', function () {
+    if (!project) return alert('Выберите проект');
+    fetch('/api/reports/' + project.id + '/xlsx', {
+      headers: { Authorization: 'Bearer ' + API.getToken() }
+    }).then(function (r) {
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      return r.blob();
+    }).then(function (blob) {
+      var a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'report_' + project.name + '.xlsx';
+      a.click();
+      URL.revokeObjectURL(a.href);
+    }).catch(function (err) { alert('XLSX: ' + err.message); });
+  });
+
+  // ============================================================
+  // СТАРТ
+  // ============================================================
+  document.getElementById('projectSelect').addEventListener('change', function () {
+    selectProject(this.value);
+  });
+
+  loadProjects();
+  resetForm();
+  console.log('[measurements.html] готов');
 })();
 </script>
 </body>

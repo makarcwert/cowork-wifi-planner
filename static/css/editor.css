@@ -209,3 +209,70 @@ html, body { height:100%; overflow:hidden;
 ::-webkit-scrollbar-track { background:var(--panel); }
 ::-webkit-scrollbar-thumb { background:var(--border); border-radius:4px; }
 ::-webkit-scrollbar-thumb:hover { background:#4f4f4f; }
+/* ============================================================
+   3D-модалка
+   ============================================================ */
+.modal-3d {
+  width: 95vw;
+  max-width: 1400px;
+  height: 90vh;
+  max-height: 900px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.modal-3d-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--panel-2);
+  flex-shrink: 0;
+}
+.modal-3d-head h2 {
+  font-size: 14px;
+  margin: 0;
+  white-space: nowrap;
+}
+.modal-3d-controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  font-size: 11px;
+}
+.modal-3d-controls .chk-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  color: var(--text-dim);
+}
+.modal-3d-controls .chk-inline input[type="radio"],
+.modal-3d-controls .chk-inline input[type="checkbox"] {
+  accent-color: var(--accent);
+}
+.scene-3d-host {
+  flex: 1;
+  min-height: 500px;           /* ← страховка от 0-высоты */
+  position: relative;
+  background: #0a0a0a;
+  overflow: hidden;
+}
+.scene-3d-host canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.scene-3d-hint {
+  padding: 6px 16px;
+  background: var(--panel-2);
+  border-top: 1px solid var(--border);
+  font-size: 10px;
+  color: var(--text-dim);
+  text-align: center;
+  flex-shrink: 0;
+}

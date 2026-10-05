@@ -12,8 +12,7 @@
 
 <div class="editor-shell">
 
-
-
+  <!-- ВЕРХНИЙ ТУЛБАР -->
   <div class="topbar-drawing">
     <div class="topbar-left">
       <span class="brand">📡 CoworkWiFi Planner</span>
@@ -53,9 +52,18 @@
       <div class="tool-divider"></div>
       <button class="tool-btn" id="btnRssi" title="Карта RSSI">🌊</button>
       <button class="tool-btn" id="btnSnr" title="Карта SNR">📶</button>
+      <button class="tool-btn" id="btnInterf" title="Карта интерференции">🎯</button>
+      <button class="tool-btn" id="btnLoad" title="Расчёт нагрузки">📊</button>
+      <button class="tool-btn" id="btnAutoPlace" title="Авто-расстановка AP">🤖</button>
       <div class="tool-divider"></div>
       <button class="tool-btn" id="btnSave" title="Сохранить PNG">💾</button>
       <button class="tool-btn" id="btnCsv" title="Экспорт CSV">📄</button>
+      <button class="tool-btn" id="btnPdf" title="Отчёт PDF">📕</button>
+      <button class="tool-btn" id="btnXlsx" title="Экспорт XLSX">📊</button>
+      <div class="tool-divider"></div>
+      <button class="tool-btn" id="btnAutoFill" title="Автозамеры 4×4">🔳</button>
+      <button class="tool-btn" id="btnPlanFact" title="Сравнение план/факт">📐</button>
+      <button class="tool-btn" id="btn3D" title="3D-визуализация покрытия">🌐</button>
     </aside>
 
     <!-- ПАЛИТРА -->
@@ -117,10 +125,10 @@
         <g id="layerGrid" pointer-events="none"></g>
         <g id="layerCoverage" pointer-events="none"></g>
         <g id="layerCables" pointer-events="none"></g>
-<g id="layerRooms"></g>
-<g id="layerWalls"></g>
-<g id="layerDoors"></g>
-<g id="layerFurniture"></g>
+        <g id="layerRooms"></g>
+        <g id="layerWalls"></g>
+        <g id="layerDoors"></g>
+        <g id="layerFurniture"></g>
         <g id="layerText"></g>
         <g id="layerDevices"></g>
         <g id="layerIoT"></g>
@@ -184,6 +192,11 @@
     <span>СХЕМА РАЗМЕЩЕНИЯ • НЕ ОБМЕРНЫЙ ЧЕРТЁЖ</span>
   </footer>
 </div>
+<!-- ↑ ЗАКРЫВАЕТСЯ .editor-shell -->
+
+<!-- ============================================================
+     МОДАЛКИ — прямые дети <body>, НЕ внутри .editor-shell
+     ============================================================ -->
 
 <!-- МОДАЛКА: Новый проект -->
 <div class="modal-mask" id="modalMask">
@@ -239,9 +252,127 @@
   </div>
 </div>
 
-<!-- СКРИПТЫ -->
+<!-- МОДАЛКА: Расчёт нагрузки -->
+<div class="modal-mask" id="loadModal">
+  <div class="modal" style="width:560px;max-height:85vh;overflow-y:auto">
+    <h2>📊 Расчёт нагрузки</h2>
+    <div id="loadBody"></div>
+    <div class="modal-btns">
+      <button class="cancel" id="loadClose">Закрыть</button>
+    </div>
+  </div>
+</div>
+
+<!-- МОДАЛКА: Авто-расстановка AP -->
+<div class="modal-mask" id="autoPlaceModal">
+  <div class="modal" style="width:520px;max-height:88vh;overflow-y:auto">
+    <h2>🤖 Автоматическая расстановка AP</h2>
+    <p style="font-size:11px;color:var(--text-dim);margin-bottom:14px">
+      Алгоритм рассчитает количество точек доступа по площади и нагрузке,
+      затем расставит их равномерно с притягиванием к клиентам.
+    </p>
+
+    <label>Частота</label>
+    <select id="ap_freq">
+      <option value="2400">2.4 ГГц (100 Мбит/с)</option>
+      <option value="5000" selected>5 ГГц (400 Мбит/с)</option>
+      <option value="6000">6 ГГц (600 Мбит/с)</option>
+    </select>
+
+    <label>Мощность, dBm</label>
+    <input type="number" id="ap_power" value="20" min="5" max="30">
+
+    <label>Целевое покрытие, %</label>
+    <input type="number" id="ap_target" value="95" min="50" max="100">
+
+    <div class="modal-btns">
+      <button class="cancel" id="autoPlaceClose">Отмена</button>
+      <button class="ok" id="autoPlaceCalc">Рассчитать</button>
+    </div>
+
+    <div id="autoPlaceResult" style="margin-top:16px"></div>
+  </div>
+</div>
+
+<!-- МОДАЛКА: Сравнение план/факт -->
+<div class="modal-mask" id="planFactModal">
+  <div class="modal" style="width:820px;max-height:88vh;overflow-y:auto">
+    <h2>📐 Сравнение «план vs факт»</h2>
+    <p style="font-size:11px;color:var(--text-dim);margin-bottom:14px">
+      <b>План</b> — RSSI, рассчитанный по физической модели (FSPL + затухание стен).
+      <b>Факт</b> — RSSI, введённый вручную (реальный замер с устройства).
+      Расхождение показывает точность модели: <span style="color:#4caf50">≤ 3 дБ</span> —
+      отлично, <span style="color:#ffc107">3–6 дБ</span> — приемлемо,
+      <span style="color:#f44336">&gt; 6 дБ</span> — нужно калибровать.
+    </p>
+    <div id="planFactBody"></div>
+    <div class="modal-btns">
+      <button class="cancel" id="planFactClose">Закрыть</button>
+      <button class="ok" id="planFactRecalc">🔄 Пересчитать все</button>
+    </div>
+  </div>
+</div>
+
+<!-- МОДАЛКА: 3D-визуализация -->
+<div class="modal-mask" id="modal3D">
+  <div class="modal modal-3d">
+    <div class="modal-3d-head">
+      <h2>🌐 3D-визуализация покрытия</h2>
+      <div class="modal-3d-controls">
+        <label class="chk-inline">
+          <input type="radio" name="layer3d" value="rssi" checked> RSSI
+        </label>
+        <label class="chk-inline">
+          <input type="radio" name="layer3d" value="snr"> SNR
+        </label>
+        <label class="chk-inline">
+          <input type="radio" name="layer3d" value="interference"> Интерф.
+        </label>
+        <span class="sep">│</span>
+        <label class="chk-inline">
+          <input type="checkbox" id="chk3dWalls" checked> Стены
+        </label>
+        <label class="chk-inline">
+          <input type="checkbox" id="chk3dAps" checked> AP
+        </label>
+        <label class="chk-inline">
+          <input type="checkbox" id="chk3dSurface" checked> Поверхность
+        </label>
+        <span class="sep">│</span>
+        <label class="chk-inline">
+          Высота:
+          <input type="range" id="height3d" min="1" max="15" value="6" style="width:80px">
+        </label>
+        <button class="btn-icon" id="btn3dReset" title="Сбросить вид">⟲</button>
+        <button class="btn-icon" id="btn3dClose" title="Закрыть">✕</button>
+      </div>
+    </div>
+    <div id="scene3dHost" class="scene-3d-host"></div>
+    <div class="scene-3d-hint">
+      🖱 ЛКМ — вращение · колесо — зум · ПКМ — панорама
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================
+     СКРИПТЫ
+     Порядок важен: importmap → обычные → модуль → editor.js
+     ============================================================ -->
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+
 <script src="/static/js/api.js"></script>
 <script src="/static/js/editor-api.js"></script>
+<script src="/static/js/report.js"></script>
+<script type="module" src="/static/js/editor3d.js"></script>
 <script src="/static/js/editor.js"></script>
+
 </body>
 </html>

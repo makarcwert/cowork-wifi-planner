@@ -14,7 +14,14 @@
   const CABLE_LIMIT_M = 100;
   const CABLE_COEF = 1.1;
   const POE = { '2.4': 12.5, '5': 15.5, '6': 18.0 };
-
+// Планы каналов для разноса (без перекрытия)
+const CHANNEL_PLANS = {
+  2400: [1, 6, 11],
+  5000: [36, 44, 149, 157],
+  6000: [1, 5, 9, 13, 17, 21, 25, 29],
+};
+const MAX_AUTO_APS = 16;      // защита от бесконечного цикла
+const AUTO_TARGET_DEFAULT = 95;
   const MATERIALS = {
     brick:    { name:'Кирпич',      loss: 15, pattern:'pat-brick',    width: 7 },
     concrete: { name:'Бетон',       loss: 25, pattern:'pat-concrete', width: 8 },
@@ -335,7 +342,9 @@ const DOOR_CONFIG = {
     if (projectId) {
       await reloadFromBackend();
     }
-
+    if (projectId) {
+      await loadMeasurements();
+    }
     applyViewBox(-60, -60, width * PX_PER_M + 120, length * PX_PER_M + 120);
     document.getElementById('zoomLabel').textContent = '100%';
     render();
@@ -400,6 +409,8 @@ const DOOR_CONFIG = {
       render();
       renderProps();
       canvasHint.textContent = p.name + ' · ' + p.width_m + '×' + p.height_m + ' м';
+            await loadMeasurements();
+      render();
     } catch (err) {
       alert('Не удалось загрузить проект: ' + err.message);
     }
@@ -555,7 +566,198 @@ function lineIntersection(p1, p2, p3, p4) {
     }
     return best;
   }
+// ============================================================
+// РАСЧЁТ ИНТЕРФЕРЕНЦИИ
+// ============================================================
 
+// Частота канала в МГц
+function channelFreq(ch, band) {
+  const b = String(band);
+  if (b === '2.4' || b === '2400') return 2412 + (ch - 1) * 5;
+  if (b === '6' || b === '6000')    return 5955 + (ch - 1) * 5;
+  return 5000 + ch * 5;  // 5 ГГц
+}
+
+// Коэффициент перекрытия каналов (0 — нет, 1 — полное)
+function channelOverlap(ch1, band1, ch2, band2) {
+  const b1 = String(band1), b2 = String(band2);
+  if (b1 !== b2) return 0;
+
+  const f1 = channelFreq(ch1, b1);
+  const f2 = channelFreq(ch2, b2);
+  const df = Math.abs(f1 - f2);
+  const width = 20;  // ширина канала 20 МГц
+
+  if (df >= width) return 0;
+  return 1 - df / width;
+}
+
+// Интерференция в точке (x, y) в dBm
+function interferenceAt(x, y) {
+  if (state.aps.length < 2) return -100;  // нет интерференции от одной AP
+
+  // Находим лучшую AP
+  let bestAp = null, bestRssi = -Infinity;
+  for (const ap of state.aps) {
+    const s = signalAt(ap, x, y);
+    if (s > bestRssi) { bestRssi = s; bestAp = ap; }
+  }
+  if (!bestAp) return -100;
+
+  // Складываем помехи от остальных AP с учётом перекрытия каналов
+  let totalLinear = 0;
+  for (const ap of state.aps) {
+    if (ap.id === bestAp.id) continue;
+    const ov = channelOverlap(bestAp.channel, bestAp.band, ap.channel, ap.band);
+    if (ov <= 0) continue;
+    const rssi = signalAt(ap, x, y);
+    totalLinear += ov * Math.pow(10, rssi / 10);
+  }
+
+  if (totalLinear <= 0) return -100;
+  return 10 * Math.log10(totalLinear);
+}
+// ============================================================
+// РАСЧЁТ КЛИЕНТСКОЙ НАГРУЗКИ
+// ============================================================
+
+// Профили трафика устройств (Мбит/с)
+const DEVICE_TRAFFIC = {
+  pc:        50,
+  laptop:    30,
+  printer:   10,
+  scanner:   15,
+  camera:    8,
+  doorphone: 5,
+  ac:        1,
+  light:     0.5,
+  sensor:    0.2,
+  lock:      0.3,
+  iot:       0.2,
+  router:    0,     // инфраструктура, не клиент
+  patch:     0,
+  wlc:       0,
+  switch:    0
+};
+
+// Ёмкость AP по частоте (Мбит/с)
+const AP_CAPACITY = {
+  2400: 100,
+  5000: 400,
+  6000: 600
+};
+
+// Максимум клиентов на одну AP (реалистично)
+const AP_MAX_CLIENTS = 30;
+
+function calculateLoad() {
+  if (!state.aps.length) {
+    return {
+      aps: [],
+      totalDevices: 0,
+      unassigned: 0,
+      warnings: [{ type:'error', text:'Нет точек доступа — добавьте хотя бы одну' }]
+    };
+  }
+
+  // Инициализация контейнера для каждой AP
+  const apStats = state.aps.map(ap => ({
+    ap: ap,
+    capacity: AP_CAPACITY[ap.freq] || 300,
+    clients: [],
+    totalMbps: 0,
+    utilization: 0
+  }));
+
+  // Привязка каждого устройства к ближайшей AP
+  let unassigned = 0;
+  for (const d of state.devices) {
+    const traffic = DEVICE_TRAFFIC[d.type] || 0;
+    if (traffic === 0) continue;  // инфраструктура
+
+    let best = null, bestDist = Infinity;
+    for (const st of apStats) {
+      const dx = d.x - st.ap.x;
+      const dy = d.y - st.ap.y;
+      const dist = Math.sqrt(dx*dx + dy*dy);
+      if (dist < bestDist) { bestDist = dist; best = st; }
+    }
+
+    // Если устройство слишком далеко (> 50 м) — считаем вне покрытия
+    if (!best || bestDist > 50) {
+      unassigned++;
+      continue;
+    }
+
+    best.clients.push({
+      name: d.name,
+      type: d.type,
+      traffic: traffic,
+      distance: +bestDist.toFixed(1)
+    });
+    best.totalMbps += traffic;
+  }
+
+  // Расчёт загрузки
+  for (const st of apStats) {
+    st.totalMbps = +st.totalMbps.toFixed(1);
+    st.utilization = Math.min(100, +((st.totalMbps / st.capacity) * 100).toFixed(1));
+    st.clientCount = st.clients.length;
+  }
+
+  // Анализ
+  const warnings = [];
+
+  for (const st of apStats) {
+    if (st.utilization > 80) {
+      warnings.push({
+        type: 'error',
+        ap: st.ap.name,
+        text: st.ap.name + ' загружена на ' + st.utilization + '% ' +
+              '(' + st.totalMbps + ' из ' + st.capacity + ' Мбит/с) — ' +
+              'возможны задержки, добавьте AP или переведите часть клиентов'
+      });
+    } else if (st.utilization > 60) {
+      warnings.push({
+        type: 'warning',
+        ap: st.ap.name,
+        text: st.ap.name + ' загружена на ' + st.utilization + '% — средний уровень, следите за клиентами'
+      });
+    }
+    if (st.clientCount > AP_MAX_CLIENTS) {
+      warnings.push({
+        type: 'warning',
+        ap: st.ap.name,
+        text: st.ap.name + ' обслуживает ' + st.clientCount + ' клиентов ' +
+              '(лимит ' + AP_MAX_CLIENTS + ') — реальная скорость будет ниже'
+      });
+    }
+  }
+
+  if (unassigned > 0) {
+    warnings.push({
+      type: 'warning',
+      text: unassigned + ' устройств вне зоны покрытия (дальше 50 м от AP)'
+    });
+  }
+
+  if (warnings.length === 0) {
+    const totalUtil = apStats.reduce((s, st) => s + st.utilization, 0) / apStats.length;
+    warnings.push({
+      type: 'ok',
+      text: 'Все AP работают в норме. Средняя загрузка ' + totalUtil.toFixed(1) + '%'
+    });
+  }
+
+  const totalDevices = apStats.reduce((s, st) => s + st.clientCount, 0);
+
+  return {
+    aps: apStats,
+    totalDevices: totalDevices,
+    unassigned: unassigned,
+    warnings: warnings
+  };
+}
   // ============================================================
   // ГЛАВНЫЙ РЕНДЕР
   // ============================================================
@@ -1447,6 +1649,7 @@ function renderDoors() {
       else { el.x2 = nx; el.y2 = ny; }
       renderWalls();
       renderMarkers();
+      renderMeasurements();
     }
     async function onUp() {
       document.removeEventListener('mousemove', onMove);
@@ -2105,53 +2308,94 @@ function renderDoors() {
   // ============================================================
   document.getElementById('btnRssi').addEventListener('click', () => calcHeatmap('rssi'));
   document.getElementById('btnSnr').addEventListener('click', () => calcHeatmap('snr'));
+  document.getElementById('btnInterf').addEventListener('click', () => calcHeatmap('interference'));
+  document.getElementById('btnLoad').addEventListener('click', showLoadReport);
+document.getElementById('btnAutoPlace').addEventListener('click', showAutoPlaceModal);
 
+document.getElementById('autoPlaceClose').addEventListener('click', () => {
+  document.getElementById('autoPlaceModal').classList.remove('show');
+  L.layerDraft.innerHTML = '';
+  autoPlaceResult = null;
+  render();
+});
+
+document.getElementById('autoPlaceCalc').addEventListener('click', previewAutoPlace);
   function calcHeatmap(mode) {
     if (!state.project) return alert('Создайте проект');
     if (!state.aps.length) return alert('Разместите хотя бы одну AP');
     state.heatmapMode = mode;
-    state.heatmap = buildHeatmap();
+    state.heatmap = buildHeatmap(mode);
     drawHeatmap();
     heatmapCanvas.style.display = 'block';
-    canvasHint.textContent = 'Тепловая карта: ' + mode.toUpperCase();
+    const names = { rssi: 'RSSI', snr: 'SNR', interference: 'Интерференция' };
+    canvasHint.textContent = 'Тепловая карта: ' + (names[mode] || mode.toUpperCase());
   }
   function recalcHeatmap() {
-    if (!state.heatmap) return;
-    state.heatmap = buildHeatmap();
-    drawHeatmap();
+  if (!state.heatmap) return;
+  state.heatmap = buildHeatmap(state.heatmapMode);
+  drawHeatmap();
   }
-  function buildHeatmap() {
-    const step = 0.5;
-    const cols = Math.ceil(state.project.width_m / step);
-    const rows = Math.ceil(state.project.height_m / step);
-    const grid = [];
-    let total = 0, sum = 0, dead = 0, weak = 0, good = 0, exc = 0;
-    let min = Infinity, max = -Infinity;
-    const deadZones = [];
-    for (let r = 0; r < rows; r++) {
-      const row = [];
-      for (let c = 0; c < cols; c++) {
-        const x = c * step + step / 2;
-        const y = r * step + step / 2;
-        const dbm = coverageAt(x, y);
-        row.push(dbm);
-        total++; sum += dbm;
-        if (dbm < min) min = dbm;
-        if (dbm > max) max = dbm;
-        if (dbm >= -65) exc++;
-        else if (dbm >= -75) good++;
-        else if (dbm >= -85) weak++;
-        else { dead++; if (deadZones.length < 50) deadZones.push({ x, y, dbm }); }
+const NOISE_FLOOR = -95;  // уровень шума, дБм
+
+function buildHeatmap(mode) {
+  mode = mode || state.heatmapMode || 'rssi';
+  const step = 0.5;
+  const cols = Math.ceil(state.project.width_m / step);
+  const rows = Math.ceil(state.project.height_m / step);
+  const grid = [];
+  let total = 0, sum = 0, dead = 0, weak = 0, good = 0, exc = 0;
+  let min = Infinity, max = -Infinity;
+  const deadZones = [];
+
+  for (let r = 0; r < rows; r++) {
+    const row = [];
+    for (let c = 0; c < cols; c++) {
+      const x = c * step + step / 2;
+      const y = r * step + step / 2;
+
+      let val;
+      if (mode === 'snr') {
+        val = coverageAt(x, y) - NOISE_FLOOR;
+      } else if (mode === 'interference') {
+        val = interferenceAt(x, y);
+      } else {
+        val = coverageAt(x, y);  // RSSI
       }
-      grid.push(row);
+      row.push(val);
+
+      total++; sum += val;
+      if (val < min) min = val;
+      if (val > max) max = val;
+
+      if (mode === 'snr') {
+        // SNR — чем выше, тем лучше
+        if (val >= 40) exc++;
+        else if (val >= 25) good++;
+        else if (val >= 15) weak++;
+        else { dead++; if (deadZones.length < 50) deadZones.push({ x, y, dbm: val }); }
+      } else if (mode === 'interference') {
+        // Интерференция — чем НИЖЕ, тем лучше
+        if (val <= -95) exc++;        // нет интерференции
+        else if (val <= -85) good++;  // слабая
+        else if (val <= -75) weak++;  // средняя
+        else { dead++; if (deadZones.length < 50) deadZones.push({ x, y, dbm: val }); }
+      } else {
+        // RSSI — чем выше, тем лучше
+        if (val >= -65) exc++;
+        else if (val >= -75) good++;
+        else if (val >= -85) weak++;
+        else { dead++; if (deadZones.length < 50) deadZones.push({ x, y, dbm: val }); }
+      }
     }
-    return { cols, rows, grid, stats: {
-      total, avg: sum / total, min, max,
-      deadPct: dead / total * 100, weakPct: weak / total * 100,
-      goodPct: good / total * 100, excPct: exc / total * 100,
-      deadZones
-    }};
+    grid.push(row);
   }
+  return { cols, rows, grid, mode, stats: {
+    total, avg: sum / total, min, max,
+    deadPct: dead / total * 100, weakPct: weak / total * 100,
+    goodPct: good / total * 100, excPct: exc / total * 100,
+    deadZones
+  }};
+}
   function drawHeatmap() {
     if (!state.heatmap || !state.project) return;
     const W = state.project.width_m * PX_PER_M;
@@ -2182,21 +2426,28 @@ function renderDoors() {
       }
     }
   }
-  function colorFor(v, mode) {
-    if (mode === 'rssi') {
-      if (v >= -65) return 'rgba(76,175,80,0.45)';
-      if (v >= -75) return 'rgba(255,193,7,0.45)';
-      if (v >= -85) return 'rgba(255,152,0,0.5)';
-      return 'rgba(244,67,54,0.55)';
-    }
-    if (mode === 'snr') {
-      const s = v + 95;
-      if (s >= 40) return 'rgba(76,175,80,0.45)';
-      if (s >= 25) return 'rgba(255,193,7,0.45)';
-      return 'rgba(244,67,54,0.55)';
-    }
-    return 'rgba(0,0,0,0)';
+function colorFor(v, mode) {
+  if (mode === 'snr') {
+    if (v >= 40) return 'rgba(76,175,80,0.45)';
+    if (v >= 25) return 'rgba(139,195,74,0.45)';
+    if (v >= 15) return 'rgba(255,193,7,0.45)';
+    if (v >= 10) return 'rgba(255,152,0,0.5)';
+    return 'rgba(244,67,54,0.55)';
   }
+  if (mode === 'interference') {
+    // Интерференция — чем ниже, тем лучше
+    if (v <= -95) return 'rgba(0,0,0,0)';            // нет помех
+    if (v <= -85) return 'rgba(76,175,80,0.35)';     // слабая
+    if (v <= -75) return 'rgba(255,193,7,0.45)';     // средняя
+    if (v <= -65) return 'rgba(255,152,0,0.55)';     // сильная
+    return 'rgba(244,67,54,0.65)';                   // критическая
+  }
+  // RSSI
+  if (v >= -65) return 'rgba(76,175,80,0.45)';
+  if (v >= -75) return 'rgba(255,193,7,0.45)';
+  if (v >= -85) return 'rgba(255,152,0,0.5)';
+  return 'rgba(244,67,54,0.55)';
+}
 
   // ============================================================
   // ПАНЕЛЬ СВОЙСТВ
@@ -2512,26 +2763,661 @@ function renderDoors() {
   // ============================================================
   // СТАТИСТИКА / СПЕЦИФИКАЦИЯ / POE
   // ============================================================
-  document.getElementById('btnStats').addEventListener('click', () => {
-    if (!state.heatmap) return alert('Сначала рассчитайте покрытие (🌊)');
-    const s = state.heatmap.stats;
-    document.getElementById('statsBody').innerHTML =
-      '<div class="prop-block"><h4>Средний сигнал</h4>' +
-        '<div style="font-size:22px;font-weight:600">' + s.avg.toFixed(1) + ' dBm</div>' +
-        '<div style="font-size:11px;opacity:.7">min ' + s.min.toFixed(1) + ' / max ' + s.max.toFixed(1) + '</div></div>' +
-      '<div class="prop-block"><h4>Распределение</h4>' +
-        '<div class="stats-row"><span style="color:#4caf50">Отлично ≥ −65</span><span>' + s.excPct.toFixed(1) + '%</span></div>' +
-        '<div class="stats-row"><span style="color:#ffc107">Хорошо −65…−75</span><span>' + s.goodPct.toFixed(1) + '%</span></div>' +
-        '<div class="stats-row"><span style="color:#ff9800">Слабо −75…−85</span><span>' + s.weakPct.toFixed(1) + '%</span></div>' +
-        '<div class="stats-row"><span style="color:#f44336">Мёртвая зона &lt; −85</span><span>' + s.deadPct.toFixed(1) + '%</span></div></div>' +
-      (s.deadZones.length ?
-        '<div class="prop-block"><h4>Мёртвых зон: ' + s.deadZones.length + '</h4>' +
-        '<div style="font-size:11px;opacity:.7;max-height:140px;overflow:auto">' +
-        s.deadZones.slice(0,15).map(z =>
-          '(' + z.x.toFixed(1) + ', ' + z.y.toFixed(1) + ') → ' + z.dbm.toFixed(1) + ' dBm'
-        ).join('<br>') + '</div></div>' : '');
-    document.getElementById('statsModal').classList.add('show');
+document.getElementById('btnStats').addEventListener('click', () => {
+  if (!state.heatmap) return alert('Сначала рассчитайте покрытие (🌊, 📶 или 🎯)');
+  const s = state.heatmap.stats;
+  const mode = state.heatmap.mode || 'rssi';
+  const isSnr = mode === 'snr';
+  const isInterf = mode === 'interference';
+  const unit = isSnr ? ' дБ' : ' dBm';
+
+  let thresholds, title, deadTitle, orderReversed = false;
+  if (isSnr) {
+    thresholds = { exc:'Отлично ≥ 40', good:'Хорошо 25…40', weak:'Норма 15…25', dead:'Плохо < 15' };
+    title = 'Средний SNR';
+    deadTitle = 'Слабых зон';
+  } else if (isInterf) {
+    thresholds = {
+      exc:'Нет помех ≤ −95',
+      good:'Слабая −95…−85',
+      weak:'Средняя −85…−75',
+      dead:'Сильная > −75'
+    };
+    title = 'Средняя интерференция';
+    deadTitle = 'Зон с сильной интерференцией';
+  } else {
+    thresholds = { exc:'Отлично ≥ −65', good:'Хорошо −65…−75', weak:'Слабо −75…−85', dead:'Мёртвая зона < −85' };
+    title = 'Средний RSSI';
+    deadTitle = 'Мёртвых зон';
+  }
+
+  document.getElementById('statsBody').innerHTML =
+    '<div class="prop-block"><h4>' + title + '</h4>' +
+      '<div style="font-size:22px;font-weight:600">' + s.avg.toFixed(1) + unit + '</div>' +
+      '<div style="font-size:11px;opacity:.7">min ' + s.min.toFixed(1) + ' / max ' + s.max.toFixed(1) + unit + '</div></div>' +
+    '<div class="prop-block"><h4>Распределение (' + mode.toUpperCase() + ')</h4>' +
+      '<div class="stats-row"><span style="color:#4caf50">' + thresholds.exc + '</span><span>' + s.excPct.toFixed(1) + '%</span></div>' +
+      '<div class="stats-row"><span style="color:#8bc34a">' + thresholds.good + '</span><span>' + s.goodPct.toFixed(1) + '%</span></div>' +
+      '<div class="stats-row"><span style="color:#ffc107">' + thresholds.weak + '</span><span>' + s.weakPct.toFixed(1) + '%</span></div>' +
+      '<div class="stats-row"><span style="color:#f44336">' + thresholds.dead + '</span><span>' + s.deadPct.toFixed(1) + '%</span></div></div>' +
+    (s.deadZones.length ?
+      '<div class="prop-block"><h4>' + deadTitle + ': ' + s.deadZones.length + '</h4>' +
+      '<div style="font-size:11px;opacity:.7;max-height:140px;overflow:auto">' +
+      s.deadZones.slice(0,15).map(z =>
+        '(' + z.x.toFixed(1) + ', ' + z.y.toFixed(1) + ') → ' + z.dbm.toFixed(1) + unit
+      ).join('<br>') + '</div></div>' : '');
+  document.getElementById('statsModal').classList.add('show');
+});
+// ============================================================
+// ПОКАЗ ОТЧЁТА ПО НАГРУЗКЕ
+// ============================================================
+function showLoadReport() {
+  if (!state.project) return alert('Создайте проект');
+  if (!state.aps.length) return alert('Разместите хотя бы одну AP');
+  if (!state.devices.length) return alert('Добавьте устройства на план');
+
+  const data = calculateLoad();
+
+  let html = '';
+
+  // Сводка
+  html += '<div class="prop-block">' +
+    '<h4>Сводка</h4>' +
+    '<div class="stats-row"><span>Точек доступа</span><span class="val">' + state.aps.length + '</span></div>' +
+    '<div class="stats-row"><span>Клиентских устройств</span><span class="val">' + data.totalDevices + '</span></div>' +
+    (data.unassigned > 0 ?
+      '<div class="stats-row"><span style="color:#f44336">Вне зоны покрытия</span><span class="val" style="color:#f44336">' + data.unassigned + '</span></div>' : '') +
+    '</div>';
+
+  // По каждой AP
+  html += '<h4 style="margin:16px 0 8px;font-size:11px;text-transform:uppercase;color:var(--text-dim);letter-spacing:.5px">Нагрузка по точкам доступа</h4>';
+
+  if (data.aps.length === 0) {
+    html += '<div style="text-align:center;padding:20px;color:var(--text-dim)">Нет точек доступа</div>';
+  }
+
+  for (const st of data.aps) {
+    let color = '#4caf50';
+    let badge = 'Норма';
+    let badgeBg = 'rgba(76,175,80,0.15)';
+    if (st.utilization > 80) { color = '#f44336'; badge = 'Перегруз'; badgeBg = 'rgba(244,67,54,0.15)'; }
+    else if (st.utilization > 60) { color = '#ffc107'; badge = 'Высокая'; badgeBg = 'rgba(255,193,7,0.15)'; }
+
+    html += '<div style="background:var(--panel-2);border-radius:4px;padding:12px;margin-bottom:8px">' +
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">' +
+        '<div>' +
+          '<div style="font-weight:600">📡 ' + esc(st.ap.name) + '</div>' +
+          '<div style="font-size:11px;color:var(--text-dim)">' +
+            (st.ap.freq === 2400 ? '2.4 ГГц' : st.ap.freq === 5000 ? '5 ГГц' : '6 ГГц') +
+            ' · канал ' + st.ap.channel +
+            ' · ёмкость ' + st.capacity + ' Мбит/с' +
+          '</div>' +
+        '</div>' +
+        '<span style="background:' + badgeBg + ';color:' + color + ';padding:4px 10px;border-radius:10px;font-size:11px;font-weight:600">' +
+          badge + ' · ' + st.utilization + '%' +
+        '</span>' +
+      '</div>' +
+      '<div style="height:6px;background:var(--panel);border-radius:3px;overflow:hidden;margin-bottom:8px">' +
+        '<div style="height:100%;width:' + st.utilization + '%;background:' + color + '"></div>' +
+      '</div>' +
+      '<div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text-dim)">' +
+        '<span>Клиентов: <strong style="color:var(--text)">' + st.clientCount + '</strong> / ' + AP_MAX_CLIENTS + '</span>' +
+        '<span>Трафик: <strong style="color:var(--text)">' + st.totalMbps + '</strong> Мбит/с</span>' +
+      '</div>';
+
+    // Список устройств
+    if (st.clients.length > 0) {
+      html += '<details style="margin-top:8px">' +
+        '<summary style="cursor:pointer;font-size:11px;color:var(--accent)">Показать устройства (' + st.clients.length + ')</summary>' +
+        '<div style="margin-top:6px;font-size:11px;max-height:150px;overflow-y:auto">';
+
+      const devNames = {
+        pc:'ПК', laptop:'Ноутбук', printer:'МФУ', scanner:'Сканер',
+        camera:'Камера', light:'Свет', sensor:'Датчик', lock:'Замок',
+        doorphone:'Домофон', ac:'Кондиционер', iot:'IoT'
+      };
+
+      for (const c of st.clients) {
+        html += '<div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid var(--border)">' +
+          '<span>' + esc(c.name) + ' <span style="color:var(--text-dim)">(' + (devNames[c.type] || c.type) + ')</span></span>' +
+          '<span style="color:var(--text-dim)">' + c.traffic + ' Мбит/с · ' + c.distance + ' м</span>' +
+        '</div>';
+      }
+      html += '</div></details>';
+    }
+
+    html += '</div>';
+  }
+
+  // Предупреждения
+  if (data.warnings.length) {
+    html += '<h4 style="margin:16px 0 8px;font-size:11px;text-transform:uppercase;color:var(--text-dim);letter-spacing:.5px">Рекомендации</h4>';
+    const colors = { error:'#f44336', warning:'#ff9800', ok:'#4caf50' };
+    for (const w of data.warnings) {
+      html += '<div style="padding:8px 12px;border-left:3px solid ' + colors[w.type] + ';margin-bottom:6px;background:var(--panel-2);border-radius:3px;font-size:12px">' +
+        w.text +
+      '</div>';
+    }
+  }
+
+  document.getElementById('loadBody').innerHTML = html;
+  document.getElementById('loadModal').classList.add('show');
+}
+// ============================================================
+// АВТОМАТИЧЕСКАЯ РАССТАНОВКА AP
+// ============================================================
+
+// Гекс-сетка: N точек равномерно по площади
+function hexGridPositions(W, H, N) {
+  if (N <= 0) return [];
+  if (N === 1) return [{ x: W / 2, y: H / 2 }];
+
+  const aspect = W / H;
+  const cols = Math.max(1, Math.round(Math.sqrt(N * aspect)));
+  const rows = Math.max(1, Math.ceil(N / cols));
+
+  const positions = [];
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      if (positions.length >= N) break;
+      const offset = (r % 2) * 0.5;
+      const x = (c + 0.5 + offset) * (W / cols);
+      const y = (r + 0.5) * (H / rows);
+      positions.push({
+        x: Math.max(1.5, Math.min(W - 1.5, x)),
+        y: Math.max(1.5, Math.min(H - 1.5, y)),
+      });
+    }
+  }
+  return positions;
+}
+
+// Притянуть точки к центрам масс клиентов
+function attractToClients(positions, W, H, radius_m) {
+  return positions.map(p => {
+    // Устройства в радиусе r
+    const nearby = state.devices.filter(d =>
+      Math.hypot(d.x - p.x, d.y - p.y) < radius_m
+    );
+    if (nearby.length === 0) return p;
+
+    // Взвешенный центр масс (вес = трафик)
+    let totalW = 0, cx = 0, cy = 0;
+    for (const d of nearby) {
+      const w = (DEVICE_TRAFFIC[d.type] || 1);
+      cx += d.x * w;
+      cy += d.y * w;
+      totalW += w;
+    }
+    if (totalW === 0) return p;
+    cx /= totalW;
+    cy /= totalW;
+
+    // Смещение на 30%
+    const mix = 0.3;
+    let nx = p.x * (1 - mix) + cx * mix;
+    let ny = p.y * (1 - mix) + cy * mix;
+
+    return {
+      x: +Math.max(1.5, Math.min(W - 1.5, nx)).toFixed(2),
+      y: +Math.max(1.5, Math.min(H - 1.5, ny)).toFixed(2),
+    };
   });
+}
+
+// Основной алгоритм
+function autoPlaceAP(opts) {
+  if (!state.project) return { error: 'Нет проекта' };
+
+  const W = state.project.width_m;
+  const H = state.project.height_m;
+  const area = W * H;
+
+  // 1. Радиус покрытия одной AP
+  let radius_m = 5 + (opts.power - 10) * 0.8;
+  if (opts.freq === 2400) radius_m *= 1.4;
+  if (opts.freq === 6000) radius_m *= 0.8;
+
+  // Эффективная зона покрытия (учитывает перекрытие кругов)
+  const effectiveArea = Math.PI * radius_m * radius_m * 0.7;
+
+  // 2. Расчёт по покрытию
+  const N_cover = Math.ceil(area / effectiveArea);
+
+  // 3. Расчёт по нагрузке
+  const totalTraffic = state.devices.reduce((s, d) =>
+    s + (DEVICE_TRAFFIC[d.type] || 0), 0);
+  const capacity = AP_CAPACITY[opts.freq] || 400;
+  const N_load = totalTraffic > 0
+    ? Math.ceil(totalTraffic / (capacity * 0.7))
+    : 0;
+
+  // 4. Расчёт по клиентам
+  const N_clients = state.devices.length > 0
+    ? Math.ceil(state.devices.length / AP_MAX_CLIENTS)
+    : 0;
+
+  // 5. Итоговое количество
+  const N = Math.max(N_cover, N_load, N_clients, 1);
+
+  // 6. Расстановка
+  let positions = hexGridPositions(W, H, N);
+  positions = attractToClients(positions, W, H, radius_m * 1.5);
+
+  // 7. Оценка покрытия (быстрая, шаг 1 м)
+  const coverage = quickCoverageCheck(positions, opts, radius_m);
+
+  return {
+    count: N,
+    positions: positions,
+    coverage: coverage,
+    radius_m: +radius_m.toFixed(1),
+    N_cover: N_cover,
+    N_load: N_load,
+    N_clients: N_clients,
+    totalTraffic: +totalTraffic.toFixed(1),
+  };
+}
+
+// Быстрая проверка покрытия (шаг 1 м)
+function quickCoverageCheck(positions, opts, radius_m) {
+  if (!state.project) return 0;
+  const W = state.project.width_m;
+  const H = state.project.height_m;
+  const step = 1.0;
+
+  // Временно подменяем AP
+  const oldAps = state.aps;
+  state.aps = positions.map((p, i) => ({
+    id: -1000 - i,
+    name: 'tmp',
+    x: p.x, y: p.y,
+    power: opts.power,
+    gain: 5,
+    freq: opts.freq,
+    band: opts.freq === 2400 ? '2.4' : opts.freq === 6000 ? '6' : '5',
+    channel: 44,
+  }));
+
+  let covered = 0, total = 0;
+  for (let y = step / 2; y < H; y += step) {
+    for (let x = step / 2; x < W; x += step) {
+      const rssi = coverageAt(x, y);
+      if (rssi >= -70) covered++;
+      total++;
+    }
+  }
+
+  state.aps = oldAps;
+  return total > 0 ? Math.round(covered / total * 100) : 0;
+}
+// ============================================================
+// UI АВТО-РАССТАНОВКИ
+// ============================================================
+// ============================================================
+// УЛУЧШЕНИЯ АВТО-РАССТАНОВКИ AP
+// 1. Учёт стен  — сдвиг AP, если она «за бетоном» от клиентов
+// 2. Разнос каналов — 1/6/11 (2.4) или 36/44/149/157 (5)
+// 3. Итеративная проверка — добавляем AP, пока покрытие < target
+// ============================================================
+
+// ---------- 1. Учёт стен ----------
+// Считаем, сколько клиентов рядом с AP отрезано стенами.
+// Если отрезана половина и больше — сдвигаем AP в сторону этих клиентов.
+function adjustForWalls(positions, walls, radius_m) {
+  if (!walls || !walls.length || !state.devices.length) return positions;
+
+  const wallSegs = walls.filter(el =>
+    el.type === 'wall' || el.type === 'door' || el.type === 'window'
+  );
+  if (!wallSegs.length) return positions;
+
+  return positions.map(p => {
+    // Клиенты в радиусе притяжения
+    const nearby = state.devices.filter(d =>
+      Math.hypot(d.x - p.x, d.y - p.y) < radius_m * 1.5
+    );
+    if (nearby.length < 2) return p;
+
+    // Из них — те, до кого сигнал режется стенами
+    const blocked = nearby.filter(d => {
+      for (const w of wallSegs) {
+        if (w.type === 'door') continue; // двери не считаем препятствием
+        if (segInt({ x: p.x, y: p.y }, { x: d.x, y: d.y },
+                    { x: w.x1, y: w.y1 }, { x: w.x2, y: w.y2 })) {
+          return true;
+        }
+      }
+      return false;
+    });
+
+    if (blocked.length < nearby.length * 0.5) return p;
+
+    // Центр масс «отрезанных» клиентов
+    const cx = blocked.reduce((s, d) => s + d.x, 0) / blocked.length;
+    const cy = blocked.reduce((s, d) => s + d.y, 0) / blocked.length;
+
+    // Смещаем на 30% в сторону проблемной зоны
+    const mix = 0.3;
+    const nx = p.x * (1 - mix) + cx * mix;
+    const ny = p.y * (1 - mix) + cy * mix;
+
+    return {
+      x: +Math.max(1.5, Math.min(state.project.width_m  - 1.5, nx)).toFixed(2),
+      y: +Math.max(1.5, Math.min(state.project.height_m - 1.5, ny)).toFixed(2),
+    };
+  });
+}
+
+// ---------- 2. Разнос каналов ----------
+// Раскладываем AP по непересекающимся каналам по кругу.
+function assignChannels(positions, freq) {
+  const plan = CHANNEL_PLANS[freq] || CHANNEL_PLANS[5000];
+  return positions.map((p, i) => ({
+    ...p,
+    channel: plan[i % plan.length],
+  }));
+}
+
+// ---------- 3. Итеративная проверка ----------
+// Пока покрытие < target — добавляем AP (до MAX_AUTO_APS).
+// Возвращает финальный результат + лог итераций для UI.
+function iterativeAutoPlace(opts) {
+  if (!state.project) return { error: 'Нет проекта' };
+
+  const W = state.project.width_m;
+  const H = state.project.height_m;
+  const area = W * H;
+
+  // Радиус покрытия одной AP
+  let radius_m = 5 + (opts.power - 10) * 0.8;
+  if (opts.freq === 2400) radius_m *= 1.4;
+  if (opts.freq === 6000) radius_m *= 0.8;
+
+  const effectiveArea = Math.PI * radius_m * radius_m * 0.7;
+
+  // Оценки N по разным критериям
+  const N_cover = Math.ceil(area / effectiveArea);
+  const totalTraffic = state.devices.reduce(
+    (s, d) => s + (DEVICE_TRAFFIC[d.type] || 0), 0);
+  const capacity = AP_CAPACITY[opts.freq] || 400;
+  const N_load = totalTraffic > 0
+    ? Math.ceil(totalTraffic / (capacity * 0.7)) : 0;
+  const N_clients = state.devices.length > 0
+    ? Math.ceil(state.devices.length / AP_MAX_CLIENTS) : 0;
+
+  const N_start = Math.max(N_cover, N_load, N_clients, 1);
+  const target = opts.target || AUTO_TARGET_DEFAULT;
+
+  const wallSegs = state.elements.filter(el =>
+    el.type === 'wall' || el.type === 'door' || el.type === 'window');
+
+  const iterations = [];
+  let final = null;
+
+  for (let n = N_start; n <= MAX_AUTO_APS; n++) {
+    // 1) гекс-сетка
+    let positions = hexGridPositions(W, H, n);
+
+    // 2) притянуть к клиентам
+    positions = attractToClients(positions, W, H, radius_m * 1.5);
+
+    // 3) сдвинуть от стен
+    positions = adjustForWalls(positions, wallSegs, radius_m);
+
+    // 4) разнести каналы
+    positions = assignChannels(positions, opts.freq);
+
+    // 5) проверить покрытие (учитывает стены через coverageAt)
+    const coverage = quickCoverageCheck(positions, opts, radius_m);
+
+    iterations.push({ n, coverage });
+
+    final = {
+      count: n,
+      positions,
+      coverage,
+      radius_m: +radius_m.toFixed(1),
+      N_cover, N_load, N_clients,
+      totalTraffic: +totalTraffic.toFixed(1),
+      target,
+      iterations,
+      achieved: coverage >= target,
+    };
+
+    if (coverage >= target) break;
+  }
+
+  return final;
+}
+let autoPlaceResult = null;
+
+function showAutoPlaceModal() {
+  if (!state.project) return alert('Создайте проект');
+
+  // Сброс формы
+  document.getElementById('ap_freq').value = '5000';
+  document.getElementById('ap_power').value = '20';
+  document.getElementById('ap_target').value = '95';
+  document.getElementById('autoPlaceResult').innerHTML = '';
+  autoPlaceResult = null;
+
+  document.getElementById('autoPlaceModal').classList.add('show');
+}
+
+function previewAutoPlace() {
+  const opts = {
+    freq: parseInt(document.getElementById('ap_freq').value, 10),
+    power: parseFloat(document.getElementById('ap_power').value) || 20,
+    target: parseInt(document.getElementById('ap_target').value, 10) || AUTO_TARGET_DEFAULT,
+  };
+
+  // НОВОЕ: итеративный расчёт с учётом стен и разносом каналов
+  const result = iterativeAutoPlace(opts);
+
+  if (result.error) {
+    document.getElementById('autoPlaceResult').innerHTML =
+      '<div style="color:#f44336;padding:10px">' + result.error + '</div>';
+    return;
+  }
+
+  autoPlaceResult = { opts: opts, result: result };
+
+  const unit = 'Мбит/с';
+  const cov = result.coverage;
+  const covColor = cov >= result.target ? '#4caf50'
+                 : cov >= result.target - 10 ? '#ffc107'
+                 : '#f44336';
+
+  let html = '';
+
+  // Сводка
+  html += '<div style="background:var(--panel-2);border-radius:4px;padding:12px;margin-bottom:12px">' +
+    '<div style="font-size:14px;font-weight:600;margin-bottom:8px">' +
+      '🎯 Рекомендуется <span style="color:var(--accent)">' + result.count + '</span> точек доступа' +
+    '</div>' +
+    '<div style="font-size:11px;color:var(--text-dim);line-height:1.6">' +
+      'Радиус покрытия одной AP: <b>' + result.radius_m + ' м</b><br>' +
+      'Старт: по покрытию <b>' + result.N_cover + '</b> · ' +
+      'по нагрузке <b>' + result.N_load + '</b> · ' +
+      'по клиентам <b>' + result.N_clients + '</b><br>' +
+      'Общий трафик: <b>' + result.totalTraffic + ' ' + unit + '</b>' +
+    '</div>' +
+  '</div>';
+
+  // Итерации
+  html += '<div style="background:var(--panel-2);border-radius:4px;padding:12px;margin-bottom:12px">' +
+    '<div style="font-size:11px;color:var(--text-dim);margin-bottom:6px">' +
+      'Итеративная проверка покрытия (цель: ' + result.target + '%):' +
+    '</div>' +
+    '<div style="max-height:140px;overflow-y:auto;font-size:11px">';
+  result.iterations.forEach((it, i) => {
+    const ok = it.coverage >= result.target;
+    const color = ok ? '#4caf50' : '#ffc107';
+    const mark = ok ? '✅' : '➕';
+    html += '<div style="display:flex;justify-content:space-between;padding:2px 0;border-bottom:1px solid var(--border)">' +
+      '<span>' + mark + ' Шаг ' + (i + 1) + ': <b>' + it.n + '</b> AP</span>' +
+      '<span style="color:' + color + '">' + it.coverage + '%</span>' +
+    '</div>';
+  });
+  html += '</div></div>';
+
+  // Финальное покрытие
+  html += '<div style="background:var(--panel-2);border-radius:4px;padding:12px;margin-bottom:12px">' +
+    '<div style="display:flex;justify-content:space-between;margin-bottom:6px">' +
+      '<span style="font-size:11px;color:var(--text-dim)">Итоговое покрытие (RSSI ≥ −70 dBm)</span>' +
+      '<span style="font-weight:600;color:' + covColor + '">' + cov + '%</span>' +
+    '</div>' +
+    '<div style="height:6px;background:var(--panel);border-radius:3px;overflow:hidden">' +
+      '<div style="height:100%;width:' + Math.min(100, cov) + '%;background:' + covColor + '"></div>' +
+    '</div>' +
+    (result.achieved
+      ? '<div style="font-size:11px;color:#4caf50;margin-top:6px">✅ Цель достигнута</div>'
+      : '<div style="font-size:11px;color:#f44336;margin-top:6px">⚠ Достигнут лимит ' +
+        MAX_AUTO_APS + ' AP. Добавьте вручную или увеличьте мощность.</div>') +
+  '</div>';
+
+  // Список координат и каналов
+  html += '<div style="font-size:11px;color:var(--text-dim);margin-bottom:6px">' +
+    'Координаты и каналы (м):</div>';
+  html += '<div style="max-height:180px;overflow-y:auto;background:var(--panel-2);border-radius:4px;padding:8px">';
+  result.positions.forEach((p, i) => {
+    html += '<div style="display:flex;justify-content:space-between;padding:3px 0;font-size:11px;border-bottom:1px solid var(--border)">' +
+      '<span>AP-' + String(i + 1).padStart(2, '0') + '</span>' +
+      '<span style="color:var(--text-dim)">(' + p.x.toFixed(1) + ', ' + p.y.toFixed(1) +
+        ') · канал ' + p.channel + '</span>' +
+    '</div>';
+  });
+  html += '</div>';
+
+  // Кнопка применения
+  html += '<div style="display:flex;gap:8px;margin-top:14px">' +
+    '<button class="btn-block" id="autoApplyBtn" ' +
+      'style="background:var(--accent);color:#fff;border-color:var(--accent)">' +
+      '✅ Применить</button>' +
+  '</div>';
+
+  document.getElementById('autoPlaceResult').innerHTML = html;
+  document.getElementById('autoApplyBtn').addEventListener('click', applyAutoPlace);
+
+  // Предпросмотр кружков на карте
+  drawAutoPreview(result.positions, result.radius_m);
+}
+
+
+// Предпросмотр на карте — временно показываем кружки
+function drawAutoPreview(positions, radius_m) {
+  L.layerDraft.innerHTML = '';
+
+  for (const p of positions) {
+    const c = m2px(p.x, p.y);
+    const r = radius_m * PX_PER_M;
+
+    const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+    circle.setAttribute('cx', c.x);
+    circle.setAttribute('cy', c.y);
+    circle.setAttribute('r', r);
+    circle.setAttribute('fill', 'rgba(14,99,156,0.15)');
+    circle.setAttribute('stroke', '#0e639c');
+    circle.setAttribute('stroke-width', '1.5');
+    circle.setAttribute('stroke-dasharray', '5 3');
+    circle.setAttribute('pointer-events', 'none');
+    L.layerDraft.appendChild(circle);
+
+    const dot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+    dot.setAttribute('cx', c.x);
+    dot.setAttribute('cy', c.y);
+    dot.setAttribute('r', 6);
+    dot.setAttribute('fill', '#0e639c');
+    dot.setAttribute('stroke', '#fff');
+    dot.setAttribute('stroke-width', '2');
+    dot.setAttribute('pointer-events', 'none');
+    L.layerDraft.appendChild(dot);
+
+    // НОВОЕ: подпись канала под точкой
+    if (p.channel != null) {
+      const lbl = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+      lbl.setAttribute('x', c.x);
+      lbl.setAttribute('y', c.y + 20);
+      lbl.setAttribute('text-anchor', 'middle');
+      lbl.setAttribute('fill', '#0e639c');
+      lbl.setAttribute('font-size', '10');
+      lbl.setAttribute('font-weight', '600');
+      lbl.setAttribute('pointer-events', 'none');
+      lbl.textContent = 'ch ' + p.channel;
+      L.layerDraft.appendChild(lbl);
+    }
+  }
+
+  canvasHint.textContent = 'Предпросмотр: ' + positions.length + ' AP (с учётом стен и каналов)';
+}
+
+// Применение: удаляем старые AP, создаём новые
+async function applyAutoPlace() {
+  if (!autoPlaceResult) return;
+
+  const { opts, result } = autoPlaceResult;
+  const positions = result.positions;
+
+  if (!confirm('Применить расстановку?\n\n' +
+      '• Все существующие AP будут удалены\n' +
+      '• Будет создано ' + positions.length + ' новых точек\n' +
+      '• Частота: ' + (opts.freq / 1000) + ' ГГц, мощность: ' + opts.power + ' dBm')) {
+    return;
+  }
+
+  // 1. Удалить существующие AP
+  if (state.projectId) {
+    flashSaving();
+    for (const ap of state.aps) {
+      try { await EditorAPI.deleteAP(ap.id); } catch (e) { /* ignore */ }
+    }
+  }
+  state.aps = [];
+
+  // 2. Создать новые
+  apCnt = 0;
+  for (const pos of positions) {
+    apCnt++;
+    const band = opts.freq === 2400 ? '2.4' : opts.freq === 6000 ? '6' : '5';
+    // НОВОЕ: канал берём из результата разноса, а не хардкод
+    const channel = pos.channel != null ? pos.channel
+                  : (opts.freq === 2400 ? 6 : opts.freq === 6000 ? 37 : 44);
+
+    const ap = {
+      id: nextId(),
+      name: 'AP-' + String(apCnt).padStart(2, '0'),
+      x: pos.x,
+      y: pos.y,
+      power: opts.power,
+      gain: 5,
+      freq: opts.freq,
+      band: band,
+      channel: channel,
+    };
+    state.aps.push(ap);
+
+    if (state.projectId) {
+      try {
+        const saved = await EditorAPI.createAP(state.projectId,
+          EditorAPI.apToDB(ap));
+        if (saved && saved.id) ap.id = saved.id;
+      } catch (e) { flashError(e.message); }
+    }
+  }
+
+  flashSaved();
+
+  // 3. Закрыть модалку, очистить draft, отрисовать
+  document.getElementById('autoPlaceModal').classList.remove('show');
+  L.layerDraft.innerHTML = '';
+  autoPlaceResult = null;
+
+  render();
+  if (state.heatmap) recalcHeatmap();
+
+  canvasHint.textContent = 'Расставлено ' + state.aps.length + ' точек доступа';
+}
   document.getElementById('statsClose').addEventListener('click', () => {
     document.getElementById('statsModal').classList.remove('show');
   });
@@ -2593,13 +3479,68 @@ function renderDoors() {
   document.getElementById('poeClose').addEventListener('click', () => {
     document.getElementById('poeModal').classList.remove('show');
   });
+  document.getElementById('loadClose').addEventListener('click', () => {
+  document.getElementById('loadModal').classList.remove('show');
+});
 
   // ============================================================
   // ЭКСПОРТ PNG / CSV
   // ============================================================
   document.getElementById('btnSave').addEventListener('click', exportPNG);
   document.getElementById('btnCsv').addEventListener('click', exportCSV);
+  document.getElementById('btnPdf').addEventListener('click', exportPDF);
+  document.getElementById('btnXlsx').addEventListener('click', exportXLSX);
+  document.getElementById('btnAutoFill').addEventListener('click', autoFillMeasurements);
+    document.getElementById('btnPlanFact').addEventListener('click', showPlanFact);
+  document.getElementById('planFactClose').addEventListener('click', () => {
+    document.getElementById('planFactModal').classList.remove('show');
+  });
+    // ============================================================
+  // 3D-ВИЗУАЛИЗАЦИЯ
+  // ============================================================
+  document.getElementById('btn3D').addEventListener('click', open3D);
 
+  function open3D() {
+    if (!state.project) return alert('Создайте проект');
+    if (!state.aps.length) return alert('Разместите хотя бы одну AP');
+    if (typeof Editor3D === 'undefined') {
+      return alert('Модуль editor3d.js не подключён');
+    }
+
+    // Строим тепловую карту нужного слоя прямо здесь
+    function computeHeatmap(layer) {
+      const oldMode = state.heatmapMode;
+      state.heatmapMode = layer;
+      const hm = buildHeatmap(layer);
+      state.heatmapMode = oldMode;
+      return hm;
+    }
+
+    const heatmap = computeHeatmap('rssi');
+
+    // Перехватываем переключение слоя в 3D
+    Editor3D.onLayerChange = function (layer) {
+      const hm = computeHeatmap(layer);
+      Editor3D.open({
+        project: state.project,
+        elements: state.elements,
+        aps: state.aps,
+        heatmap: hm,
+        layer: layer,
+        computeHeatmap: computeHeatmap,
+      });
+    };
+
+    Editor3D.open({
+      project: state.project,
+      elements: state.elements,
+      aps: state.aps,
+      heatmap: heatmap,
+      layer: 'rssi',
+      computeHeatmap: computeHeatmap,
+    });
+  }
+  document.getElementById('planFactRecalc').addEventListener('click', recalcAllMeasurements);
   function exportPNG() {
     if (!state.project) return alert('Создайте проект');
     L.layerSelection.style.display = 'none';
@@ -2668,7 +3609,598 @@ function renderDoors() {
     a.click();
     URL.revokeObjectURL(a.href);
   }
+  // ============================================================
+  // ЭКСПОРТ PDF-ОТЧЁТА (через Report.generate → window.print)
+  // ============================================================
+  function exportPDF() {
+    if (!state.project) return alert('Создайте проект');
+    if (typeof Report === 'undefined' || !Report.generate) {
+      return alert('Модуль report.js не подключён');
+    }
 
+    // Собираем данные для отчёта
+    const owner = state.project.owner_name || null;
+    const me = window._currentUser || { full_name: 'Инженер', email: '—' };
+
+    // Тепловая карта (если есть) → dataURL
+    let heatmapDataUrl = null;
+    if (state.heatmap && heatmapCanvas.style.display !== 'none' && heatmapCanvas.width) {
+      try { heatmapDataUrl = heatmapCanvas.toDataURL('image/png'); }
+      catch (e) { /* canvas tainted — пропускаем */ }
+    }
+
+    // Элементы для отчёта
+    const elements = state.elements.map(el => ({
+      type: el.type,
+      material: el.material,
+      subtype: el.subtype,
+      x1: el.x1, y1: el.y1, x2: el.x2, y2: el.y2,
+      name: el.name,
+    }));
+
+    // AP в формате отчёта
+    const aps = state.aps.map(ap => ({
+      name: ap.name,
+      model: ap.model || 'Generic AP',
+      x: ap.x, y: ap.y,
+      tx_power_dbm: ap.power,
+      antenna_gain: ap.gain,
+      band: ap.band,
+      channel: ap.channel,
+      ssid_type: 'corporate',
+    }));
+
+    // Устройства
+    const devices = state.devices.map(d => ({
+      name: d.name,
+      type: d.type,
+      x: d.x, y: d.y,
+      required_rssi: -65,
+    }));
+
+    // Статистика покрытия (если есть тепловая карта)
+    let stats = null;
+    if (state.heatmap && state.heatmap.stats) {
+      const s = state.heatmap.stats;
+      stats = {
+        rssi: {
+          excellent: { count: 0, percent: s.excPct },
+          good:      { count: 0, percent: s.goodPct },
+          fair:      { count: 0, percent: s.weakPct },
+          poor:      { count: 0, percent: 0 },
+          dead:      { count: 0, percent: s.deadPct },
+        },
+      };
+    }
+
+    Report.generate({
+      project: {
+        name: state.project.name,
+        width_m: state.project.width_m,
+        height_m: state.project.height_m,
+        created_at: state.project.created_at || new Date().toISOString(),
+      },
+      owner: owner,
+      user: me,
+      elements: elements,
+      aps: aps,
+      devices: devices,
+      heatmapDataUrl: heatmapDataUrl,
+      mode: state.heatmapMode || 'rssi',
+      stats: stats,
+      channels: null,  // можно добавить позже
+    });
+  }
+    // ============================================================
+  // ЭКСПОРТ XLSX (бэкенд собирает через openpyxl)
+  // ============================================================
+  async function exportXLSX() {
+    if (!state.project) return alert('Создайте проект');
+    if (!state.projectId) {
+      return alert('Проект не сохранён на сервере — сначала сохраните');
+    }
+
+    const token = localStorage.getItem('cowork_token');
+    const url = '/api/reports/' + state.projectId + '/xlsx';
+
+    try {
+      flashSaving();
+      const res = await fetch(url, {
+        headers: token ? { Authorization: 'Bearer ' + token } : {},
+      });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+
+      const blob = await res.blob();
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = (state.project.name || 'project') + '.xlsx';
+      a.click();
+      URL.revokeObjectURL(a.href);
+      flashSaved();
+    } catch (err) {
+      flashError('XLSX: ' + err.message);
+      alert('Не удалось скачать XLSX: ' + err.message);
+    }
+  }
+    // ============================================================
+  // АВТОЗАМЕРЫ 4×4 (сетка по площади проекта)
+  // ============================================================
+  async function autoFillMeasurements() {
+    if (!state.project) return alert('Создайте проект');
+    if (!state.projectId) {
+      return alert('Проект не сохранён на сервере — сначала сохраните');
+    }
+    if (!state.aps.length) return alert('Разместите хотя бы одну AP');
+
+    const cols = 4, rows = 4;
+    const W = state.project.width_m;
+    const H = state.project.height_m;
+
+    if (!confirm('Создать сетку замеров ' + cols + '×' + rows +
+                 ' (' + (cols * rows) + ' точек)?\n\n' +
+                 'Каждая точка будет рассчитана по физической модели ' +
+                 '(FSPL + затухание на стенах).')) {
+      return;
+    }
+
+    flashSaving();
+    let created = 0;
+    let failed = 0;
+    const token = localStorage.getItem('cowork_token');
+
+    // Замеры создаём последовательно, чтобы не перегружать бэкенд
+    for (let r = 1; r <= rows; r++) {
+      for (let c = 1; c <= cols; c++) {
+        const x = +((c / (cols + 1)) * W).toFixed(2);
+        const y = +((r / (rows + 1)) * H).toFixed(2);
+
+        try {
+          // 1. Рассчитать RSSI в точке
+          const calcRes = await fetch(
+            '/api/measurements/' + state.projectId +
+            '/calculate?x=' + x + '&y=' + y,
+            {
+              method: 'POST',
+              headers: Object.assign(
+                { 'Content-Type': 'application/json' },
+                token ? { Authorization: 'Bearer ' + token } : {}
+              ),
+              body: '{}',
+            }
+          );
+          if (!calcRes.ok) throw new Error('calculate HTTP ' + calcRes.status);
+          const calc = await calcRes.json();
+          const rssi = calc.best ? calc.best.rssi : -100;
+
+          // 2. Создать замер
+          const createRes = await fetch(
+            '/api/measurements/' + state.projectId,
+            {
+              method: 'POST',
+              headers: Object.assign(
+                { 'Content-Type': 'application/json' },
+                token ? { Authorization: 'Bearer ' + token } : {}
+              ),
+              body: JSON.stringify({
+                name: 'Авто ' + (r - 1) * cols + c,
+                x: x, y: y,
+                rssi: rssi,
+                snr: calc.snr || null,
+                interference: null,
+                mode: 'auto',
+              }),
+            }
+          );
+          if (!createRes.ok) throw new Error('create HTTP ' + createRes.status);
+          created++;
+        } catch (err) {
+          console.warn('Автозамер (' + x + ', ' + y + ') не создан:', err);
+          failed++;
+        }
+      }
+    }
+
+    flashSaved();
+    canvasHint.textContent =
+      'Автозамеры: создано ' + created + ' из ' + (cols * rows) +
+      (failed ? ' (' + failed + ' ошибок)' : '');
+
+    // Обновляем список замеров, если страница измерений открыта рядом —
+    // в редакторе просто показываем сообщение
+    alert('Автозамеры завершены.\n\n' +
+          'Создано: ' + created + '\n' +
+          'Ошибок: ' + failed + '\n\n' +
+          'Посмотреть список можно на странице «Измерения».');
+  }
+    // ============================================================
+  // СРАВНЕНИЕ «ПЛАН vs ФАКТ»
+  // ============================================================
+  //
+  // План  — RSSI, рассчитанный физической моделью (signalAt/coverageAt).
+  // Факт  — RSSI, сохранённый в замере (mode = 'manual').
+  //         Замеры mode = 'auto' считаются «плановыми» — у них факт == плану.
+  //
+  // Расхождение = |факт − план|.
+  //   ≤ 3 дБ   → зелёный   (модель точная)
+  //   3–6 дБ   → жёлтый    (приемлемо)
+  //   > 6 дБ   → красный   (модель врёт, нужна калибровка)
+  //
+  // ============================================================
+
+  // Список замеров текущего проекта (кэш)
+  let measurementsCache = [];
+
+  // Загрузить замеры с бэкенда
+  async function loadMeasurements() {
+    if (!state.projectId) { measurementsCache = []; return []; }
+    try {
+      const token = localStorage.getItem('cowork_token');
+      const res = await fetch('/api/measurements/' + state.projectId, {
+        headers: token ? { Authorization: 'Bearer ' + token } : {},
+      });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      measurementsCache = await res.json();
+      return measurementsCache;
+    } catch (err) {
+      console.warn('Не удалось загрузить замеры:', err);
+      measurementsCache = [];
+      return [];
+    }
+  }
+
+  // Рассчитать план в точке (x, y) по текущим AP и стенам
+  function planRssiAt(x, y) {
+    if (!state.aps.length) return -100;
+    return coverageAt(x, y);
+  }
+
+  // Цвет по расхождению
+  function diffColor(diff) {
+    if (diff == null) return '#858585';      // серый — нет факта
+    if (diff <= 3)   return '#4caf50';       // зелёный — отлично
+    if (diff <= 6)   return '#ffc107';       // жёлтый — приемлемо
+    return '#f44336';                        // красный — плохо
+  }
+
+  function diffLabel(diff) {
+    if (diff == null) return '—';
+    if (diff <= 3) return 'отлично';
+    if (diff <= 6) return 'приемлемо';
+    return 'калибровать';
+  }
+
+  // Открыть модалку «План/Факт»
+  async function showPlanFact() {
+    if (!state.project) return alert('Создайте проект');
+    if (!state.projectId) return alert('Проект не сохранён на сервере');
+
+    await loadMeasurements();
+
+    if (!measurementsCache.length) {
+      document.getElementById('planFactBody').innerHTML =
+        '<div style="text-align:center;padding:30px;color:var(--text-dim)">' +
+          'Замеров пока нет. Создайте их кнопкой 🔳 (автозамеры) ' +
+          'или добавьте вручную, кликнув по замеру на карте.' +
+        '</div>';
+      document.getElementById('planFactModal').classList.add('show');
+      return;
+    }
+
+    renderPlanFactTable();
+    document.getElementById('planFactModal').classList.add('show');
+  }
+
+  function renderPlanFactTable() {
+    const rows = measurementsCache.map(m => {
+      const plan = planRssiAt(m.x, m.y);
+      const fact = m.mode === 'manual' ? m.rssi : null;
+      const diff = fact == null ? null : Math.abs(fact - plan);
+      return { m, plan, fact, diff };
+    });
+
+    // Сводка
+    const withFact = rows.filter(r => r.fact != null);
+    const avgDiff = withFact.length
+      ? withFact.reduce((s, r) => s + r.diff, 0) / withFact.length
+      : 0;
+    const maxDiff = withFact.length
+      ? Math.max.apply(null, withFact.map(r => r.diff))
+      : 0;
+    const goodPct = withFact.length
+      ? (withFact.filter(r => r.diff <= 3).length / withFact.length) * 100
+      : 0;
+
+    let html = '';
+
+    // Сводные карточки
+    html += '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:16px">' +
+      statCard('Всего замеров', rows.length, '') +
+      statCard('С фактом', withFact.length, '') +
+      statCard('Средн. расхождение', avgDiff.toFixed(1) + ' дБ',
+               avgDiff <= 3 ? '#4caf50' : avgDiff <= 6 ? '#ffc107' : '#f44336') +
+      statCard('Макс. расхождение', maxDiff.toFixed(1) + ' дБ',
+               maxDiff <= 6 ? '#4caf50' : '#f44336') +
+    '</div>';
+
+    // Прогресс-бар «качество модели»
+    if (withFact.length) {
+      html += '<div style="background:var(--panel-2);border-radius:4px;padding:12px;margin-bottom:16px">' +
+        '<div style="display:flex;justify-content:space-between;margin-bottom:6px;font-size:11px">' +
+          '<span style="color:var(--text-dim)">Точность модели (замеры с расхождением ≤ 3 дБ)</span>' +
+          '<span style="font-weight:600;color:' + diffColor(avgDiff) + '">' +
+            goodPct.toFixed(0) + '%</span>' +
+        '</div>' +
+        '<div style="height:6px;background:var(--panel);border-radius:3px;overflow:hidden">' +
+          '<div style="height:100%;width:' + goodPct + '%;background:' +
+            diffColor(avgDiff) + '"></div>' +
+        '</div>' +
+      '</div>';
+    }
+
+    // Таблица
+    html += '<div style="overflow-x:auto;background:var(--panel-2);border-radius:4px">' +
+      '<table style="width:100%;border-collapse:collapse;font-size:11px">' +
+      '<thead><tr style="background:var(--panel);color:var(--text-dim)">' +
+        '<th style="text-align:left;padding:6px 8px">#</th>' +
+        '<th style="text-align:left;padding:6px 8px">Имя</th>' +
+        '<th style="text-align:right;padding:6px 8px">X, м</th>' +
+        '<th style="text-align:right;padding:6px 8px">Y, м</th>' +
+        '<th style="text-align:right;padding:6px 8px">План</th>' +
+        '<th style="text-align:right;padding:6px 8px">Факт</th>' +
+        '<th style="text-align:right;padding:6px 8px">Δ, дБ</th>' +
+        '<th style="text-align:left;padding:6px 8px">Статус</th>' +
+        '<th style="padding:6px 8px"></th>' +
+      '</tr></thead><tbody>';
+
+    rows.forEach((r, i) => {
+      const factStr = r.fact != null ? r.fact.toFixed(1) : '—';
+      const diffStr = r.diff != null ? r.diff.toFixed(1) : '—';
+      const color = diffColor(r.diff);
+      const modeTag = r.m.mode === 'manual'
+        ? '<span style="color:#2196f3;font-size:10px">ручной</span>'
+        : '<span style="color:var(--text-dim);font-size:10px">авто</span>';
+
+      html += '<tr style="border-top:1px solid var(--border)">' +
+        '<td style="padding:6px 8px;color:var(--text-dim)">' + (i + 1) + '</td>' +
+        '<td style="padding:6px 8px">' + esc(r.m.name || 'Замер') + ' ' + modeTag + '</td>' +
+        '<td style="padding:6px 8px;text-align:right">' + r.m.x.toFixed(1) + '</td>' +
+        '<td style="padding:6px 8px;text-align:right">' + r.m.y.toFixed(1) + '</td>' +
+        '<td style="padding:6px 8px;text-align:right;color:var(--accent)">' +
+          r.plan.toFixed(1) + '</td>' +
+        '<td style="padding:6px 8px;text-align:right;color:' +
+          (r.fact != null ? '#2196f3' : 'var(--text-dim)') + '">' + factStr + '</td>' +
+        '<td style="padding:6px 8px;text-align:right;font-weight:600;color:' + color + '">' +
+          diffStr + '</td>' +
+        '<td style="padding:6px 8px"><span style="color:' + color + '">' +
+          diffLabel(r.diff) + '</span></td>' +
+        '<td style="padding:6px 8px">' +
+          '<button class="btn-xs" data-edit="' + r.m.id + '">✎</button> ' +
+          '<button class="btn-xs" data-recalc="' + r.m.id + '">🔄</button>' +
+        '</td>' +
+      '</tr>';
+    });
+
+    html += '</tbody></table></div>';
+
+    document.getElementById('planFactBody').innerHTML = html;
+
+    // Обработчики кнопок в таблице
+    document.querySelectorAll('#planFactBody button[data-edit]').forEach(b => {
+      b.addEventListener('click', () => openManualEdit(parseInt(b.dataset.edit, 10)));
+    });
+    document.querySelectorAll('#planFactBody button[data-recalc]').forEach(b => {
+      b.addEventListener('click', () => recalcOneMeasurement(parseInt(b.dataset.recalc, 10)));
+    });
+  }
+
+  function statCard(label, value, color) {
+    return '<div style="background:var(--panel-2);border-radius:4px;padding:10px">' +
+      '<div style="font-size:10px;color:var(--text-dim);text-transform:uppercase;' +
+        'letter-spacing:.5px;margin-bottom:4px">' + label + '</div>' +
+      '<div style="font-size:16px;font-weight:600;color:' +
+        (color || 'var(--text)') + '">' + value + '</div>' +
+    '</div>';
+  }
+
+  // Открыть форму ручного ввода для конкретного замера
+  function openManualEdit(measurementId) {
+    const m = measurementsCache.find(x => x.id === measurementId);
+    if (!m) return;
+
+    const plan = planRssiAt(m.x, m.y);
+
+    // Строим форму прямо в модалке «План/Факт»
+    const body = document.getElementById('planFactBody');
+    body.innerHTML =
+      '<div style="background:var(--panel-2);border-radius:4px;padding:16px">' +
+        '<h3 style="margin-bottom:12px">📝 Ручной ввод замера</h3>' +
+        '<div style="font-size:11px;color:var(--text-dim);margin-bottom:14px">' +
+          'Замер #' + m.id + ' · (' + m.x.toFixed(2) + ', ' + m.y.toFixed(2) + ') м<br>' +
+          'Расчётная модель: <b style="color:var(--accent)">' + plan.toFixed(1) + ' дБм</b>' +
+        '</div>' +
+
+        '<label style="display:block;font-size:11px;color:var(--text-dim);margin-bottom:4px">' +
+          'Название</label>' +
+        '<input id="me_name" type="text" value="' + esc(m.name || 'Замер') + '" ' +
+          'style="width:100%;background:var(--panel);border:1px solid var(--border);' +
+          'color:var(--text);padding:6px 8px;border-radius:3px;font-size:12px;margin-bottom:12px">' +
+
+        '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px">' +
+          '<div>' +
+            '<label style="display:block;font-size:11px;color:var(--text-dim);margin-bottom:4px">' +
+              'RSSI, дБм *</label>' +
+            '<input id="me_rssi" type="number" step="0.1" value="' +
+              (m.mode === 'manual' ? m.rssi : plan.toFixed(1)) + '" ' +
+              'style="width:100%;background:var(--panel);border:1px solid var(--border);' +
+              'color:var(--text);padding:6px 8px;border-radius:3px;font-size:12px">' +
+          '</div>' +
+          '<div>' +
+            '<label style="display:block;font-size:11px;color:var(--text-dim);margin-bottom:4px">' +
+              'SNR, дБ</label>' +
+            '<input id="me_snr" type="number" step="0.1" value="' +
+              (m.snr != null ? m.snr : '') + '" ' +
+              'style="width:100%;background:var(--panel);border:1px solid var(--border);' +
+              'color:var(--text);padding:6px 8px;border-radius:3px;font-size:12px">' +
+          '</div>' +
+          '<div>' +
+            '<label style="display:block;font-size:11px;color:var(--text-dim);margin-bottom:4px">' +
+              'Интерференция, дБм</label>' +
+            '<input id="me_inter" type="number" step="0.1" value="' +
+              (m.interference != null ? m.interference : '') + '" ' +
+              'style="width:100%;background:var(--panel);border:1px solid var(--border);' +
+              'color:var(--text);padding:6px 8px;border-radius:3px;font-size:12px">' +
+          '</div>' +
+        '</div>' +
+
+        // Мини-индикатор расхождения в реальном времени
+        '<div id="me_diff" style="margin-top:14px;padding:10px;background:var(--panel);' +
+          'border-radius:4px;font-size:12px">' +
+          'Введите RSSI для оценки расхождения' +
+        '</div>' +
+
+        '<div style="display:flex;gap:8px;margin-top:16px">' +
+          '<button class="btn-block" id="me_save" ' +
+            'style="background:var(--accent);color:#fff;border-color:var(--accent);' +
+            'flex:1">💾 Сохранить</button>' +
+          '<button class="btn-block" id="me_plan" ' +
+            'style="flex:1">🎯 Взять расчётное (' + plan.toFixed(1) + ')</button>' +
+          '<button class="btn-block" id="me_cancel" style="flex:1">← К таблице</button>' +
+        '</div>' +
+      '</div>';
+
+    // Live-пересчёт расхождения при вводе RSSI
+    const rssiInput = document.getElementById('me_rssi');
+    const diffBox = document.getElementById('me_diff');
+    function updateDiff() {
+      const v = parseFloat(rssiInput.value);
+      if (isNaN(v)) {
+        diffBox.innerHTML = 'Введите RSSI для оценки расхождения';
+        return;
+      }
+      const d = Math.abs(v - plan);
+      const color = diffColor(d);
+      diffBox.innerHTML =
+        'План: <b>' + plan.toFixed(1) + '</b> дБм · ' +
+        'Факт: <b style="color:#2196f3">' + v.toFixed(1) + '</b> дБм · ' +
+        'Расхождение: <b style="color:' + color + '">' + d.toFixed(1) +
+        ' дБ</b> (' + diffLabel(d) + ')';
+    }
+    rssiInput.addEventListener('input', updateDiff);
+    updateDiff();
+
+    // Взять расчётное значение
+    document.getElementById('me_plan').addEventListener('click', () => {
+      rssiInput.value = plan.toFixed(1);
+      updateDiff();
+    });
+
+    // Сохранить
+    document.getElementById('me_save').addEventListener('click', async () => {
+      const rssi = parseFloat(rssiInput.value);
+      if (isNaN(rssi)) return alert('Введите RSSI');
+
+      const payload = {
+        name: document.getElementById('me_name').value || 'Замер',
+        x: m.x, y: m.y,
+        rssi: rssi,
+        snr: parseFloat(document.getElementById('me_snr').value) || null,
+        interference: parseFloat(document.getElementById('me_inter').value) || null,
+        mode: 'manual',           // ← ключевое: помечаем как ручной
+      };
+
+      try {
+        const token = localStorage.getItem('cowork_token');
+        const res = await fetch('/api/measurements/' + m.id + '/update', {
+          method: 'PUT',
+          headers: Object.assign(
+            { 'Content-Type': 'application/json' },
+            token ? { Authorization: 'Bearer ' + token } : {}
+          ),
+          body: JSON.stringify(payload),
+        });
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+
+        // Обновляем кэш и возвращаемся к таблице
+        await loadMeasurements();
+        renderPlanFactTable();
+        renderMeasurements();      // перерисовываем точки на карте
+        flashSaved();
+      } catch (err) {
+        alert('Не удалось сохранить: ' + err.message);
+      }
+    });
+
+    // Назад к таблице
+    document.getElementById('me_cancel').addEventListener('click', renderPlanFactTable);
+  }
+
+  // Пересчитать один замер по физической модели (сбросить факт → авто)
+  async function recalcOneMeasurement(measurementId) {
+    const m = measurementsCache.find(x => x.id === measurementId);
+    if (!m) return;
+    const plan = planRssiAt(m.x, m.y);
+
+    try {
+      const token = localStorage.getItem('cowork_token');
+      const res = await fetch('/api/measurements/' + m.id + '/update', {
+        method: 'PUT',
+        headers: Object.assign(
+          { 'Content-Type': 'application/json' },
+          token ? { Authorization: 'Bearer ' + token } : {}
+        ),
+        body: JSON.stringify({
+          name: m.name, x: m.x, y: m.y,
+          rssi: +plan.toFixed(1),
+          snr: m.snr, interference: m.interference,
+          mode: 'auto',
+        }),
+      });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      await loadMeasurements();
+      renderPlanFactTable();
+      renderMeasurements();
+    } catch (err) {
+      alert('Ошибка: ' + err.message);
+    }
+  }
+
+  // Пересчитать все замеры (только авто-режим, факт не трогаем)
+  async function recalcAllMeasurements() {
+    if (!measurementsCache.length) return;
+    if (!confirm('Пересчитать все замеры по текущей модели AP?\n\n' +
+                 'Ручные замеры (mode=manual) НЕ будут перезаписаны.')) return;
+
+    flashSaving();
+    let ok = 0, skip = 0, err = 0;
+
+    for (const m of measurementsCache) {
+      if (m.mode === 'manual') { skip++; continue; }
+      try {
+        const plan = planRssiAt(m.x, m.y);
+        const token = localStorage.getItem('cowork_token');
+        const res = await fetch('/api/measurements/' + m.id + '/update', {
+          method: 'PUT',
+          headers: Object.assign(
+            { 'Content-Type': 'application/json' },
+            token ? { Authorization: 'Bearer ' + token } : {}
+          ),
+          body: JSON.stringify({
+            name: m.name, x: m.x, y: m.y,
+            rssi: +plan.toFixed(1),
+            snr: m.snr, interference: m.interference,
+            mode: 'auto',
+          }),
+        });
+        if (res.ok) ok++; else err++;
+      } catch (e) { err++; }
+    }
+
+    await loadMeasurements();
+    renderPlanFactTable();
+    renderMeasurements();
+    flashSaved();
+    alert('Пересчёт завершён.\nОбновлено: ' + ok + '\nПропущено (ручные): ' + skip + '\nОшибок: ' + err);
+  }
   // ============================================================
   // АВТОРИЗАЦИЯ
   // ============================================================
@@ -2684,6 +4216,7 @@ function renderDoors() {
       if (!r.ok) throw new Error('unauthorized');
       const u = await r.json();
       const av = document.getElementById('userAvatar');
+            window._currentUser = u;
       if (av) av.textContent = (u.full_name || '?').split(' ').map(s => s[0] || '').join('').slice(0, 2).toUpperCase();
       if (u.role === 'admin') {
         const al = document.getElementById('adminLink');

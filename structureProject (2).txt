@@ -1,0 +1,45 @@
+cowork-wifi-planner/
+├── app/
+│   ├── __init__.py
+│   ├── main.py               # точка входа FastAPI, монтирует роутеры + /static
+│   ├── database.py           # подключение к SQLite (SQLAlchemy)
+│   ├── models.py             # SQLAlchemy-модели (User, Project, AP, ...)
+│   ├── schemas.py            # Pydantic-схемы (Create/Out)
+│   ├── security.py           # JWT + хеш паролей (PBKDF2-SHA256)
+│   ├── deps.py               # зависимости (get_current_user, require_role)
+│   ├── physics.py            # расчёты FSPL, стен, RSSI/SNR, интерференции, нагрузки
+│   ├── ap_catalog.py         # каталог реальных моделей точек доступа
+│   └── routes/
+│       ├── __init__.py
+│       ├── auth.py           # /api/auth/*          — регистрация, вход, /me
+│       ├── users.py          # /api/users/*         — управление пользователями
+│       ├── projects.py       # /api/projects/*      — проекты, элементы, AP, устройства
+│       ├── measurements.py   # /api/measurements/*  — замеры, тепловые карты, оптимизация
+│       ├── reports.py        # /api/reports/*       — экспорт CSV, XLSX, JSON
+│       ├── ssid.py           # /api/ssid/*          — SSID-профили (corp/guest/IoT)
+│       ├── infrastructure.py # /api/infra/*         — WLC, PoE, СКС, спецификация
+│       ├── admin.py          # /api/admin/*         — метрики, аудит, все проекты
+│       └── ap_catalog.py     # /api/ap-models/*     — каталог моделей AP
+├── static/
+│   ├── index.html            # главная страница
+│   ├── login.html            # авторизация / регистрация
+│   ├── editor.html           # редактор плана (основная рабочая страница)
+│   ├── measurements.html     # страница измерений (заглушка + описание API)
+│   ├── heatmap.html          # тепловые карты (заглушка, не в навигации)
+│   ├── admin.html            # админ-панель (метрики, пользователи, аудит)
+│   ├── css/
+│   │   ├── style.css         # общие стили всех страниц + темы
+│   │   └── editor.css        # стили рабочей области редактора
+│   └── js/
+│       ├── api.js            # fetch-обёртка + JWT в localStorage
+│       ├── auth.js           # логин/регистрация (для login.html)
+│       ├── editor.js         # ядро редактора: SVG, палитра, физика, тепловые карты
+│       ├── editor-api.js     # адаптеры БД ↔ UI (AP, элементы, устройства, SW)
+│       ├── icons.js          # SVG-иконки оборудования (дублирует inline в editor.js)
+│       ├── report.js         # генерация PDF-отчёта через window.print()
+│       ├── measurements.js   # логика страницы измерений
+│       └── admin.js          # логика админ-панели
+├── uploads/                  # загруженные файлы (создаётся автоматически)
+├── requirements.txt          # зависимости Python
+├── README.md                 # описание проекта
+└── structureProject.txt      # этот файл
