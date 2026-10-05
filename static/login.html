@@ -4,65 +4,108 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Вход — CoworkWiFi Planner</title>
-<link rel="stylesheet" href="/static/style.css">
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="/static/css/style.css">
 <script>
-  (function () {
-    var t = localStorage.getItem('cw_theme') || 'dark';
-    document.documentElement.setAttribute('data-theme', t);
-  })();
+  // Тема — сразу, чтобы не мигало
+  var t = localStorage.getItem('cw_theme') || 'dark';
+  document.documentElement.setAttribute('data-theme', t);
 </script>
 </head>
 <body class="auth-page">
 
-  <div class="auth-card">
-    <h1>📡 CoworkWiFi Planner</h1>
-    <p class="subtitle">Вход в систему</p>
+<div class="auth-card">
+  <div class="logo">📡</div>
+  <h1>CoworkWiFi Planner</h1>
+  <p class="subtitle">Программа проверки зоны покрытия Wi-Fi</p>
 
-    <!-- Вход -->
-    <form id="loginForm">
-      <label>Email
-        <input type="email" id="email" required placeholder="admin@local">
-      </label>
-      <label>Пароль
-        <input type="password" id="password" required placeholder="••••••">
-      </label>
-      <button type="submit">Войти</button>
-    </form>
+  <form id="loginForm">
+    <label>Email
+      <input type="email" id="email" required placeholder="admin@local" autocomplete="username">
+    </label>
+    <label>Пароль
+      <input type="password" id="password" required placeholder="••••••" autocomplete="current-password">
+    </label>
+    <button type="submit">Войти</button>
+  </form>
 
-    <p class="hint">
-      Нет аккаунта? <a href="#" id="showRegister">Зарегистрироваться</a>
-    </p>
+  <p class="hint">
+    Нет аккаунта? <a href="#" id="showRegister">Зарегистрироваться</a>
+  </p>
 
-    <!-- Регистрация -->
-    <form id="registerForm" style="display:none">
-      <label>ФИО
-        <input type="text" id="regName" required placeholder="Иван Иванов">
-      </label>
-      <label>Email
-        <input type="email" id="regEmail" required placeholder="user@example.com">
-      </label>
-      <label>Пароль
-        <input type="password" id="regPassword" required minlength="6"
-               placeholder="минимум 6 символов">
-      </label>
-      <label>Роль
-        <select id="regRole">
-          <option value="analyst">Аналитик</option>
-          <option value="engineer">Инженер</option>
-          <option value="admin">Администратор</option>
-        </select>
-      </label>
-      <button type="submit">Создать аккаунт</button>
-    </form>
+  <form id="registerForm" style="display:none">
+    <label>ФИО
+      <input type="text" id="regName" required placeholder="Иван Иванов">
+    </label>
+    <label>Email
+      <input type="email" id="regEmail" required placeholder="user@example.com">
+    </label>
+    <label>Пароль
+      <input type="password" id="regPassword" required minlength="6" placeholder="минимум 6 символов">
+    </label>
+    <label>Роль
+      <select id="regRole">
+        <option value="analyst">Аналитик</option>
+        <option value="engineer">Инженер</option>
+        <option value="admin">Администратор</option>
+      </select>
+    </label>
+    <button type="submit">Создать аккаунт</button>
+  </form>
 
-    <div id="msg" class="msg"></div>
-
-    <p class="hint" style="margin-top:24px">
-      <a href="/static/editor.html">→ Продолжить без входа</a>
-    </p>
-  </div>
+  <div id="msg" class="msg"></div>
+</div>
 
 <script src="/static/js/api.js"></script>
-<script src="/static/js/auth.js"></script>
+<script>
+(function () {
+  var loginForm = document.getElementById('loginForm');
+  var registerForm = document.getElementById('registerForm');
+  var msg = document.getElementById('msg');
+
+  document.getElementById('showRegister').addEventListener('click', function (e) {
+    e.preventDefault();
+    loginForm.style.display = 'none';
+    registerForm.style.display = 'block';
+    msg.classList.remove('show');
+  });
+
+  loginForm.addEventListener('submit', function (e) {
+    e.preventDefault();
+    var form = new FormData();
+    form.append('username', document.getElementById('email').value);
+    form.append('password', document.getElementById('password').value);
+    API.postForm('/api/auth/login', form)
+      .then(function (data) {
+        API.setToken(data.access_token);
+        window.location.href = '/static/index.html';
+      })
+      .catch(function (err) {
+        msg.textContent = err.message;
+        msg.className = 'msg error show';
+      });
+  });
+
+  registerForm.addEventListener('submit', function (e) {
+    e.preventDefault();
+    API.post('/api/auth/register', {
+      full_name: document.getElementById('regName').value,
+      email: document.getElementById('regEmail').value,
+      password: document.getElementById('regPassword').value,
+      role: document.getElementById('regRole').value
+    })
+      .then(function () {
+        msg.textContent = 'Аккаунт создан. Войдите.';
+        msg.className = 'msg success show';
+        registerForm.style.display = 'none';
+        loginForm.style.display = 'block';
+      })
+      .catch(function (err) {
+        msg.textContent = err.message;
+        msg.className = 'msg error show';
+      });
+  });
+})();
+</script>
 </body>
 </html>

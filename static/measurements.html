@@ -4,205 +4,97 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Измерения — CoworkWiFi Planner</title>
-<link rel="stylesheet" href="/static/style.css">
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="/static/css/style.css">
 <script>
-  (function () {
-    var t = localStorage.getItem('cw_theme') || 'dark';
-    document.documentElement.setAttribute('data-theme', t);
-  })();
+  var t = localStorage.getItem('cw_theme') || 'dark';
+  document.documentElement.setAttribute('data-theme', t);
 </script>
 </head>
-<body class="measurements-page editor-page">
+<body>
 
-<div class="editor-shell">
+<header class="topbar-drawing">
+  <div class="topbar-left">
+    <span class="brand">📡 CoworkWiFi Planner</span>
+    <a class="menu-item" href="/static/index.html">Главная</a>
+    <a class="menu-item" href="/static/editor.html">Редактор</a>
+    <a class="menu-item active" href="/static/measurements.html">Измерения</a>
+    <a class="menu-item" id="adminLink" href="/static/admin.html" style="display:none">Админ</a>
+  </div>
+  <div class="spacer"></div>
+  <div class="topbar-right">
+    <button class="btn-icon" id="themeToggle" title="Тема">☀</button>
+    <div class="avatar" id="userAvatar">?</div>
+    <span class="brand" id="userName" style="font-size:12px;font-weight:400;color:var(--text-dim)"></span>
+    <button class="btn-icon" id="logoutBtn" title="Выйти">⏻</button>
+  </div>
+</header>
 
-  <!-- ═══════════ ШАПКА ═══════════ -->
-  <header class="drawing-header">
-    <div class="drawing-title">
-      <div class="drawing-label">Измерения / Замеры покрытия</div>
-      <h1>Карта замеров Wi-Fi</h1>
-    </div>
-    <div class="drawing-meta">
-      <div class="meta-item">
-        <span class="meta-label">Проект</span>
-        <span class="meta-value" id="metaProjectName">—</span>
-      </div>
-      <div class="meta-item">
-        <span class="meta-label">Замеров</span>
-        <span class="meta-value" id="metaMeasCount">0</span>
-      </div>
-      <div class="meta-item">
-        <span class="meta-label">Инструмент</span>
-        <span class="meta-value" id="metaTool">Выделение</span>
-      </div>
-    </div>
-  </header>
-
-  <!-- ═══════════ ТУЛБАР ═══════════ -->
-  <div class="topbar-drawing">
-    <div class="topbar-left">
-      <a class="brand" href="/static/index.html">📡 CoworkWiFi Planner</a>
-      <div style="display:flex;gap:2px;margin-left:16px">
-        <a class="menu-item" href="/static/index.html">Главная</a>
-        <a class="menu-item" href="/static/editor.html">Редактор</a>
-        <a class="menu-item active" href="/static/measurements.html">Измерения</a>
-        <a class="menu-item" id="adminLink" href="/static/admin.html"
-           style="display:none">Админ</a>
-      </div>
-    </div>
-    <div class="spacer"></div>
-    <div class="topbar-right">
-      <label class="chk-inline">Проект:
-        <select id="projectSelect" class="palette-search"
-                style="width:auto;min-width:220px;margin-left:6px">
-          <option value="">— Выберите —</option>
-        </select>
-      </label>
-      <span class="sep">│</span>
-      <button class="btn-icon" id="themeToggle" title="Сменить тему">☀</button>
-      <span class="zoom-label" id="userName" style="min-width:auto;padding:0 8px"></span>
-      <button class="btn-icon" id="logoutBtn" title="Выйти">⏻</button>
-    </div>
+<main class="container">
+  <h1>Измерения</h1>
+  <div class="card">
+    <h3>Программа проверки зоны покрытия</h3>
+    <p style="color:var(--text-dim);font-size:12px;line-height:1.6;margin-bottom:14px">
+      Раздел в разработке. Основной функционал измерений RSSI/SNR реализован
+      прямо в редакторе: инструмент <b>📍 Замер</b> на левой панели.
+    </p>
+    <a class="btn-primary-sm" href="/static/editor.html">Открыть редактор →</a>
   </div>
 
-  <!-- ═══════════ РАБОЧАЯ ОБЛАСТЬ ═══════════ -->
-  <div class="drawing-layout">
-
-    <!-- Панель инструментов -->
-    <aside class="tools-bar">
-      <button class="tool-btn active" data-tool="select" title="Выделение">🖱</button>
-      <button class="tool-btn" data-tool="measure" title="Добавить замер">📍</button>
-      <div class="tool-divider"></div>
-      <button class="tool-btn" id="showHeatmap" title="Пересчитать покрытие">🌊</button>
-      <button class="tool-btn" id="autoFillBtn" title="Автозаполнить замеры">🤖</button>
-      <button class="tool-btn" id="exportCsvBtn" title="Экспорт CSV">📄</button>
-    </aside>
-
-    <!-- Список замеров -->
-    <aside class="palette-bar">
-      <div class="palette-header">
-        <span>Замеры (<span id="measCount">0</span>)</span>
-      </div>
-      <div class="palette-groups" id="measList"
-           style="padding:8px;display:flex;flex-direction:column;gap:4px"></div>
-
-      <div class="palette-footer">
-        <div class="legend-section" style="margin:0">
-          <div class="legend-title">Легенда RSSI</div>
-          <div class="legend-row">
-            <span class="sw" style="background:#4caf50"></span> Отлично ≥ −65
-          </div>
-          <div class="legend-row">
-            <span class="sw" style="background:#ffc107"></span> Хорошо −65…−75
-          </div>
-          <div class="legend-row">
-            <span class="sw" style="background:#ff9800"></span> Слабо −75…−85
-          </div>
-          <div class="legend-row">
-            <span class="sw" style="background:#f44336"></span> Мёртвая зона &lt; −85
-          </div>
-        </div>
-      </div>
-    </aside>
-
-    <!-- Холст -->
-    <div class="drawing-canvas" id="canvasWrap">
-      <div class="canvas-toolbar">
-        <span class="toolbar-info" id="canvasHint">Выберите проект</span>
-        <div class="toolbar-actions">
-          <label class="chk-inline">
-            <input type="checkbox" id="layerWalls" checked> Стены
-          </label>
-          <label class="chk-inline">
-            <input type="checkbox" id="layerCoverage" checked> Покрытие
-          </label>
-        </div>
-      </div>
-
-      <svg id="planSvg" xmlns="http://www.w3.org/2000/svg"
-           preserveAspectRatio="xMidYMid meet">
-        <defs>
-          <pattern id="grid10" width="10" height="10" patternUnits="userSpaceOnUse">
-            <path d="M 10 0 L 0 0 0 10" fill="none"
-                  stroke="#2a2a2a" stroke-width="0.5"/>
-          </pattern>
-          <pattern id="grid100" width="40" height="40" patternUnits="userSpaceOnUse">
-            <rect width="40" height="40" fill="url(#grid10)"/>
-            <path d="M 40 0 L 0 0 0 40" fill="none"
-                  stroke="#3a3a3a" stroke-width="0.8"/>
-          </pattern>
-        </defs>
-
-        <rect x="0" y="0" width="100%" height="100%"
-              fill="transparent" pointer-events="none"/>
-
-        <g id="layerWalls"        pointer-events="none"></g>
-        <g id="layerDraft"        pointer-events="none"></g>
-        <g id="layerMeasurements"></g>
-      </svg>
-
-      <canvas id="heatmapCanvas" style="display:none"></canvas>
-
-      <div class="canvas-statusbar">
-        <span id="cursorPos">X: —  Y: —</span>
-        <span class="status-sep">│</span>
-        <span id="zoomLabel" style="min-width:auto">100%</span>
-        <button class="btn-xs" id="zoomOut">−</button>
-        <button class="btn-xs" id="zoomIn">+</button>
-      </div>
-    </div>
-
-    <!-- Свойства / легенда -->
-    <aside class="legend-panel">
-      <div class="legend-tabs">
-        <button class="legend-tab active" data-tab="props">Свойства</button>
-        <button class="legend-tab" data-tab="legend">Легенда</button>
-      </div>
-
-      <div class="legend-content" id="propsPanel">
-        <div class="props-empty">
-          <div class="props-empty-icon">📍</div>
-          <div>Выберите замер<br>или добавьте новый</div>
-        </div>
-      </div>
-
-      <div class="legend-content" id="legendPanel" style="display:none">
-        <div class="legend-section">
-          <div class="legend-title">Как работать</div>
-          <p style="font-size:12px;color:var(--text-dim);line-height:1.6">
-            <b>1.</b> Выберите проект сверху.<br>
-            <b>2.</b> Возьмите инструмент <b>📍 Добавить замер</b>.<br>
-            <b>3.</b> Кликните на холсте — замер добавится автоматически
-            с рассчитанным RSSI.<br>
-            <b>4.</b> Или нажмите <b>🤖 Автозаполнить</b> — сетка 4×4.<br>
-            <b>5.</b> Экспорт CSV — кнопка <b>📄</b>.
-          </p>
-        </div>
-      </div>
-    </aside>
+  <div class="card">
+    <h3>API измерений</h3>
+    <p style="color:var(--text-dim);font-size:12px;line-height:1.6;margin-bottom:10px">
+      Программа обеспечивает измерение уровня сигнала (RSSI), отношения
+      сигнал/шум (SNR), определение интерференции. API доступен по адресам:
+    </p>
+    <table class="table">
+      <thead><tr><th>Метод</th><th>URL</th><th>Назначение</th></tr></thead>
+      <tbody>
+        <tr><td>POST</td><td><code>/api/measurements/{plan_id}</code></td><td>Добавить замер</td></tr>
+        <tr><td>GET</td><td><code>/api/measurements/{plan_id}</code></td><td>Список замеров</td></tr>
+        <tr><td>POST</td><td><code>/api/measurements/{plan_id}/calculate?x=&y=</code></td><td>Расчёт RSSI в точке</td></tr>
+        <tr><td>POST</td><td><code>/api/measurements/{plan_id}/preview</code></td><td>Тепловая карта RSSI</td></tr>
+        <tr><td>POST</td><td><code>/api/measurements/{plan_id}/snr</code></td><td>Карта SNR</td></tr>
+        <tr><td>POST</td><td><code>/api/measurements/{plan_id}/interference</code></td><td>Карта интерференции</td></tr>
+      </tbody>
+    </table>
   </div>
+</main>
 
-  <footer class="drawing-footer">
-    <span>Измерения покрытия Wi-Fi</span>
-    <span>Данные синхронизируются с сервером</span>
-    <span>RSSI, dBm</span>
-  </footer>
-</div>
+<footer class="drawing-footer">
+  <span>📡 CoworkWiFi Planner</span>
+  <span>Измерения</span>
+  <span>Скрыпкин М. Ю. · СИП-323/24</span>
+</footer>
 
 <script src="/static/js/api.js"></script>
-<script src="/static/js/measurements.js"></script>
 <script>
-  (function () {
-    var btn = document.getElementById('themeToggle');
-    if (!btn) return;
-    btn.textContent = document.documentElement.getAttribute('data-theme') === 'dark' ? '☀' : '🌙';
-    btn.addEventListener('click', function () {
-      var next = document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
-      document.documentElement.setAttribute('data-theme', next);
-      localStorage.setItem('cw_theme', next);
-      btn.textContent = next === 'dark' ? '☀' : '🌙';
-    });
-  })();
+(function () {
+  var tb = document.getElementById('themeToggle');
+  tb.textContent = (localStorage.getItem('cw_theme') || 'dark') === 'dark' ? '☀' : '🌙';
+  tb.addEventListener('click', function () {
+    var next = document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-theme', next);
+    localStorage.setItem('cw_theme', next);
+    tb.textContent = next === 'dark' ? '☀' : '🌙';
+  });
+
+  if (!API.getToken()) { window.location.href = '/static/login.html'; return; }
+  API.get('/api/auth/me').then(function (u) {
+    document.getElementById('userName').textContent = u.full_name;
+    document.getElementById('userAvatar').textContent =
+      (u.full_name || '?').split(' ').map(function (s) { return s[0] || ''; }).join('').slice(0, 2).toUpperCase();
+    if (u.role === 'admin') document.getElementById('adminLink').style.display = '';
+  }).catch(function () {
+    API.clearToken();
+    window.location.href = '/static/login.html';
+  });
+
+  document.getElementById('logoutBtn').addEventListener('click', function () {
+    API.clearToken();
+    window.location.href = '/static/login.html';
+  });
+})();
 </script>
 </body>
 </html>

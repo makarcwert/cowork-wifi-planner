@@ -3,48 +3,30 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>CoworkWiFi Planner — редактор зоны покрытия</title>
+<title>CoworkWiFi Planner — редактор</title>
+<link rel="icon" href="data:,">
 <link rel="stylesheet" href="/static/css/style.css">
+<link rel="stylesheet" href="/static/css/editor.css">
 </head>
-<body class="editor-page">
+<body>
 
 <div class="editor-shell">
 
-  <!-- ═══════════ ШАПКА ЧЕРТЕЖА ═══════════ -->
-  <header class="drawing-header">
-    <div class="drawing-title">
-      <div class="drawing-label">Инфраструктура / План помещений</div>
-      <h1>Топологическая карта офиса</h1>
-    </div>
-    <div class="drawing-meta">
-      <div class="meta-item">
-        <span class="meta-label">Проекция</span>
-        <span class="meta-value">Вид сверху</span>
-      </div>
-      <div class="meta-item">
-        <span class="meta-label">Масштаб</span>
-        <span class="meta-value">1:50</span>
-      </div>
-      <div class="meta-item">
-        <span class="meta-label">Сетка</span>
-        <span class="meta-value" id="metaGrid">0.5 м</span>
-      </div>
-      <div class="meta-item">
-        <span class="meta-label">Лист</span>
-        <span class="meta-value">01 / 01</span>
-      </div>
-    </div>
-  </header>
 
-  <!-- ═══════════ ВЕРХНИЙ ТУЛБАР ═══════════ -->
+
   <div class="topbar-drawing">
     <div class="topbar-left">
-      <a class="brand" href="/static/index.html">📡 CoworkWiFi Planner</a>
+      <span class="brand">📡 CoworkWiFi Planner</span>
+      <a class="brand" href="/static/index.html" style="color:var(--text-dim);font-weight:400;font-size:12px;text-decoration:none;margin-left:8px">Главная</a>
+      <a class="brand" href="/static/measurements.html" style="color:var(--text-dim);font-weight:400;font-size:12px;text-decoration:none">Измерения</a>
+      <a class="brand" id="adminLink" href="/static/admin.html" style="color:var(--text-dim);font-weight:400;font-size:12px;text-decoration:none;display:none">Админ</a>
     </div>
-
     <div class="spacer"></div>
-
     <div class="topbar-right">
+      <select id="projectSelect" class="palette-search" style="min-width:180px;font-size:11px;padding:4px 6px">
+        <option value="">— Проект —</option>
+      </select>
+      <span class="sep">│</span>
       <button class="btn-icon" id="undoBtn" title="Отменить (Ctrl+Z)">↶</button>
       <button class="btn-icon" id="redoBtn" title="Повторить (Ctrl+Y)">↷</button>
       <span class="sep">│</span>
@@ -52,19 +34,21 @@
       <span class="zoom-label" id="zoomLabel">100%</span>
       <button class="btn-icon" id="zoomIn" title="Увеличить">+</button>
       <span class="sep">│</span>
-      <button class="btn-icon" id="themeToggle" title="Сменить тему">☀</button>
+      <button class="btn-icon" id="themeToggle" title="Тема">☀</button>
       <button class="btn-primary-sm" id="newProjectBtn">+ Новый проект</button>
+      <div class="avatar" id="userAvatar" title="Аккаунт" style="width:26px;height:26px;border-radius:50%;background:var(--accent);color:#fff;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;margin-left:6px">?</div>
+      <button class="btn-icon" id="logoutBtn" title="Выйти">⏻</button>
     </div>
   </div>
 
-  <!-- ═══════════ РАБОЧАЯ ОБЛАСТЬ ═══════════ -->
   <div class="drawing-layout">
 
-    <!-- ЛЕВАЯ ПАНЕЛЬ ИНСТРУМЕНТОВ -->
+    <!-- ЛЕВЫЙ ТУЛБАР -->
     <aside class="tools-bar">
       <button class="tool-btn active" data-tool="select" title="Выделение (V)">🖱</button>
       <button class="tool-btn" data-tool="wall" title="Стена (W)">🧱</button>
       <button class="tool-btn" data-tool="room" title="Комната">⬛</button>
+      <button class="tool-btn" data-tool="door" title="Дверь">🚪</button>
       <button class="tool-btn" data-tool="text" title="Текст (T)">🅰</button>
       <div class="tool-divider"></div>
       <button class="tool-btn" id="btnRssi" title="Карта RSSI">🌊</button>
@@ -74,7 +58,7 @@
       <button class="tool-btn" id="btnCsv" title="Экспорт CSV">📄</button>
     </aside>
 
-    <!-- ПАЛИТРА ЭЛЕМЕНТОВ -->
+    <!-- ПАЛИТРА -->
     <aside class="palette-bar">
       <div class="palette-header">
         <span>Элементы</span>
@@ -88,209 +72,131 @@
       </div>
     </aside>
 
-    <!-- ХОЛСТ -->
+    <!-- КАНВАС -->
     <div class="drawing-canvas" id="canvasWrap">
-
-      <!-- Тулбар над холстом -->
       <div class="canvas-toolbar">
-        <span class="toolbar-info" id="canvasHint">Выберите инструмент</span>
+        <span class="toolbar-info" id="canvasHint">Создайте или выберите проект</span>
         <div class="toolbar-actions">
-          <label class="chk-inline">
-            <input type="checkbox" id="chkLayerWalls" checked> Стены
-          </label>
-          <label class="chk-inline">
-            <input type="checkbox" id="chkLayerFurniture" checked> Мебель
-          </label>
-          <label class="chk-inline">
-            <input type="checkbox" id="chkLayerDevices" checked> Техника
-          </label>
-          <label class="chk-inline">
-            <input type="checkbox" id="chkLayerCoverage" checked> Покрытие
-          </label>
-          <label class="chk-inline">
-            <input type="checkbox" id="chkLayerCables" checked> Кабели
-          </label>
+          <label class="chk-inline"><input type="checkbox" id="chkLayerWalls" checked> Стены</label>
+          <label class="chk-inline"><input type="checkbox" id="chkLayerFurniture" checked> Мебель</label>
+          <label class="chk-inline"><input type="checkbox" id="chkLayerDevices" checked> Техника</label>
+          <label class="chk-inline"><input type="checkbox" id="chkLayerCoverage" checked> Покрытие</label>
+          <label class="chk-inline"><input type="checkbox" id="chkLayerCables" checked> Кабели</label>
         </div>
       </div>
 
-      <!-- Рамка выделения и индикатор привязки -->
       <div class="selection-rect" id="selectionRect"></div>
       <div class="snap-indicator" id="snapIndicator"></div>
 
-      <!-- SVG-сцена -->
       <svg id="planSvg" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid meet">
         <defs id="svgDefs">
-          <!-- Паттерн: кирпич -->
           <pattern id="pat-brick" width="40" height="20" patternUnits="userSpaceOnUse">
             <rect width="40" height="20" fill="#E8B5A5"/>
             <line x1="0" y1="10" x2="40" y2="10" stroke="#B85C38" stroke-width="1"/>
             <line x1="0" y1="0" x2="0" y2="10" stroke="#B85C38" stroke-width="1"/>
             <line x1="20" y1="10" x2="20" y2="20" stroke="#B85C38" stroke-width="1"/>
-            <line x1="40" y1="0" x2="40" y2="10" stroke="#B85C38" stroke-width="1"/>
           </pattern>
-
-          <!-- Паттерн: дерево -->
           <pattern id="pat-wood" width="10" height="10" patternUnits="userSpaceOnUse">
             <rect width="10" height="10" fill="#C79070"/>
             <line x1="5" y1="0" x2="5" y2="10" stroke="#A0522D" stroke-width="1"/>
-            <line x1="0" y1="0" x2="0" y2="10" stroke="#8B5A2B" stroke-width="1"/>
           </pattern>
-
-          <!-- Паттерн: бетон -->
           <pattern id="pat-concrete" width="10" height="10" patternUnits="userSpaceOnUse">
             <rect width="10" height="10" fill="#9A9A9A"/>
             <circle cx="3" cy="3" r="0.8" fill="#6A6A6A"/>
             <circle cx="7" cy="7" r="0.8" fill="#6A6A6A"/>
           </pattern>
-
-          <!-- Паттерн: стекло -->
           <pattern id="pat-glass" width="20" height="10" patternUnits="userSpaceOnUse">
             <rect width="20" height="10" fill="#D6EEF6" fill-opacity="0.6"/>
             <line x1="0" y1="0" x2="0" y2="10" stroke="#5BA8C8" stroke-width="0.8"/>
-            <line x1="10" y1="0" x2="10" y2="10" stroke="#5BA8C8" stroke-width="0.4" opacity="0.5"/>
           </pattern>
-
-          <!-- Паттерн: гипсокартон -->
           <pattern id="pat-drywall" width="4" height="4" patternUnits="userSpaceOnUse">
             <rect width="4" height="4" fill="#E8E8E8"/>
           </pattern>
         </defs>
-
-        <!-- Прозрачный задний фон для перехвата кликов -->
         <rect x="0" y="0" width="100%" height="100%" fill="transparent" pointer-events="none"/>
-
-        <!-- Слои -->
-        <g id="layerGrid"        pointer-events="none"></g>
-        <g id="layerCoverage"    pointer-events="none"></g>
-        <g id="layerCables"      pointer-events="none"></g>
-        <g id="layerRooms"></g>
-        <g id="layerWalls"></g>
-        <g id="layerFurniture"></g>
+        <g id="layerGrid" pointer-events="none"></g>
+        <g id="layerCoverage" pointer-events="none"></g>
+        <g id="layerCables" pointer-events="none"></g>
+<g id="layerRooms"></g>
+<g id="layerWalls"></g>
+<g id="layerDoors"></g>
+<g id="layerFurniture"></g>
         <g id="layerText"></g>
         <g id="layerDevices"></g>
         <g id="layerIoT"></g>
         <g id="layerSwitches"></g>
         <g id="layerAps"></g>
-        <g id="layerDraft"       pointer-events="none"></g>
-        <g id="layerSelection"   pointer-events="none"></g>
+        <g id="layerDraft" pointer-events="none"></g>
+        <g id="layerSelection" pointer-events="none"></g>
       </svg>
 
-      <!-- Canvas для тепловой карты -->
       <canvas id="heatmapCanvas" style="display:none"></canvas>
 
-      <!-- Статусбар внизу холста -->
       <div class="canvas-statusbar">
         <span id="cursorPos">X: —  Y: —</span>
         <span class="status-sep">│</span>
         <span id="snapStatus">Сетка: 0.5 м</span>
         <button class="btn-xs" id="toggleSnap">Выкл. сетку</button>
+        <span class="status-sep">│</span>
+        <span id="saveStatus" style="color:var(--green)"></span>
       </div>
     </div>
 
-    <!-- ПРАВАЯ ПАНЕЛЬ: СВОЙСТВА / ЛЕГЕНДА -->
+    <!-- ПРАВАЯ ПАНЕЛЬ -->
     <aside class="legend-panel">
       <div class="legend-tabs">
         <button class="legend-tab active" data-tab="props">Свойства</button>
         <button class="legend-tab" data-tab="legend">Легенда</button>
       </div>
-
-      <!-- Свойства объекта -->
       <div class="legend-content" id="propsPanel">
         <div class="props-empty">
           <div class="props-empty-icon">🎨</div>
           <div>Выберите объект на чертеже</div>
         </div>
       </div>
-
-      <!-- Легенда -->
       <div class="legend-content" id="legendPanel" style="display:none">
-
         <div class="legend-section">
           <div class="legend-title">01 / МАТЕРИАЛЫ СТЕН</div>
-          <div class="legend-row">
-            <span class="sw" style="background:#E8B5A5"></span>
-            Кирпич <em>15 дБ</em>
-          </div>
-          <div class="legend-row">
-            <span class="sw" style="background:#D6EEF6"></span>
-            Стекло <em>3 дБ</em>
-          </div>
-          <div class="legend-row">
-            <span class="sw" style="background:#C79070"></span>
-            Дерево <em>6 дБ</em>
-          </div>
-          <div class="legend-row">
-            <span class="sw" style="background:#E8E8E8"></span>
-            Гипсокартон <em>4 дБ</em>
-          </div>
-          <div class="legend-row">
-            <span class="sw" style="background:#9A9A9A"></span>
-            Бетон <em>25 дБ</em>
-          </div>
+          <div class="legend-row"><span class="sw" style="background:#E8B5A5"></span> Кирпич <em>15 дБ</em></div>
+          <div class="legend-row"><span class="sw" style="background:#D6EEF6"></span> Стекло <em>3 дБ</em></div>
+          <div class="legend-row"><span class="sw" style="background:#C79070"></span> Дерево <em>6 дБ</em></div>
+          <div class="legend-row"><span class="sw" style="background:#E8E8E8"></span> Гипсокартон <em>4 дБ</em></div>
+          <div class="legend-row"><span class="sw" style="background:#9A9A9A"></span> Бетон <em>25 дБ</em></div>
         </div>
-
         <div class="legend-section">
           <div class="legend-title">02 / ОБОРУДОВАНИЕ</div>
           <div class="legend-grid" id="legendGrid"></div>
         </div>
-
         <div class="legend-section">
           <div class="legend-title">03 / ПОРОГИ RSSI</div>
-          <div class="legend-row">
-            <span class="sw" style="background:#4caf50"></span>
-            Отличный ≥ −65 dBm
-          </div>
-          <div class="legend-row">
-            <span class="sw" style="background:#ffc107"></span>
-            Хороший −65…−75
-          </div>
-          <div class="legend-row">
-            <span class="sw" style="background:#ff9800"></span>
-            Слабый −75…−85
-          </div>
-          <div class="legend-row">
-            <span class="sw" style="background:#f44336"></span>
-            Мёртвая зона &lt; −85
-          </div>
+          <div class="legend-row"><span class="sw" style="background:#4caf50"></span> Отличный ≥ −65 dBm</div>
+          <div class="legend-row"><span class="sw" style="background:#ffc107"></span> Хороший −65…−75</div>
+          <div class="legend-row"><span class="sw" style="background:#ff9800"></span> Слабый −75…−85</div>
+          <div class="legend-row"><span class="sw" style="background:#f44336"></span> Мёртвая зона &lt; −85</div>
         </div>
-
       </div>
     </aside>
   </div>
 
-  <!-- ═══════════ НИЖНЯЯ ПОДПИСЬ ЧЕРТЕЖА ═══════════ -->
   <footer class="drawing-footer">
     <span>1:50 — условный масштаб</span>
     <span>Контуры 1–2 пикселя • Ортогональные трассы</span>
     <span>СХЕМА РАЗМЕЩЕНИЯ • НЕ ОБМЕРНЫЙ ЧЕРТЁЖ</span>
   </footer>
-
 </div>
 
-<!-- ═══════════ МОДАЛЬНОЕ ОКНО: НОВЫЙ ПРОЕКТ ═══════════ -->
+<!-- МОДАЛКА: Новый проект -->
 <div class="modal-mask" id="modalMask">
   <div class="modal modal-wide">
     <h2>Новый проект</h2>
     <p class="modal-hint">Стены строятся автоматически по периметру.</p>
-
     <label>Название</label>
     <input type="text" id="npName" value="Коворкинг">
-
-    <div class="row-3">
-      <div>
-        <label>Ширина, м</label>
-        <input type="number" id="npWidth" value="20" min="5" max="100">
-      </div>
-      <div>
-        <label>Длина, м</label>
-        <input type="number" id="npHeight" value="30" min="5" max="100">
-      </div>
-      <div>
-        <label>Высота, м</label>
-        <input type="number" id="npRoomH" value="3" min="2" max="10" step="0.5">
-      </div>
+    <div class="row-2">
+      <div><label>Ширина, м</label><input type="number" id="npWidth" value="20" min="5" max="100"></div>
+      <div><label>Длина, м</label><input type="number" id="npHeight" value="30" min="5" max="100"></div>
+      <div><label>Высота, м</label><input type="number" id="npRoomH" value="3" min="2" max="10" step="0.5"></div>
     </div>
-
     <label>Материал стен</label>
     <select id="npMaterial">
       <option value="concrete" selected>Бетон (25 дБ)</option>
@@ -299,7 +205,6 @@
       <option value="wood">Дерево (6 дБ)</option>
       <option value="glass">Стекло (3 дБ)</option>
     </select>
-
     <div class="modal-btns">
       <button class="cancel" id="npCancel">Отмена</button>
       <button class="ok" id="npCreate">Создать</button>
@@ -307,43 +212,36 @@
   </div>
 </div>
 
-<!-- ═══════════ МОДАЛЬНОЕ ОКНО: СТАТИСТИКА ═══════════ -->
+<!-- МОДАЛКА: Статистика -->
 <div class="modal-mask" id="statsModal">
   <div class="modal" style="width:520px;max-height:80vh;overflow-y:auto">
     <h2>📊 Статистика покрытия</h2>
     <div id="statsBody"></div>
-    <div class="modal-btns">
-      <button class="cancel" id="statsClose">Закрыть</button>
-    </div>
+    <div class="modal-btns"><button class="cancel" id="statsClose">Закрыть</button></div>
   </div>
 </div>
 
-<!-- ═══════════ МОДАЛЬНОЕ ОКНО: СПЕЦИФИКАЦИЯ ═══════════ -->
+<!-- МОДАЛКА: Спецификация -->
 <div class="modal-mask" id="specModal">
   <div class="modal" style="width:600px;max-height:80vh;overflow-y:auto">
     <h2>📋 Спецификация оборудования</h2>
     <div id="specBody"></div>
-    <div class="modal-btns">
-      <button class="cancel" id="specClose">Закрыть</button>
-    </div>
+    <div class="modal-btns"><button class="cancel" id="specClose">Закрыть</button></div>
   </div>
 </div>
 
-<!-- ═══════════ МОДАЛЬНОЕ ОКНО: PoE-БЮДЖЕТ ═══════════ -->
+<!-- МОДАЛКА: PoE -->
 <div class="modal-mask" id="poeModal">
   <div class="modal" style="width:520px;max-height:80vh;overflow-y:auto">
     <h2>⚡ PoE-бюджет</h2>
     <div id="poeBody"></div>
-    <div class="modal-btns">
-      <button class="cancel" id="poeClose">Закрыть</button>
-    </div>
+    <div class="modal-btns"><button class="cancel" id="poeClose">Закрыть</button></div>
   </div>
 </div>
 
-<!-- ═══════════ СКРИПТЫ ═══════════ -->
-<script src="/static/js/icons.js"></script>
+<!-- СКРИПТЫ -->
 <script src="/static/js/api.js"></script>
+<script src="/static/js/editor-api.js"></script>
 <script src="/static/js/editor.js"></script>
-
 </body>
 </html>

@@ -4,142 +4,110 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Админ-панель — CoworkWiFi Planner</title>
-<link rel="stylesheet" href="/static/style.css">
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="/static/css/style.css">
 <script>
-  (function () {
-    var t = localStorage.getItem('cw_theme') || 'dark';
-    document.documentElement.setAttribute('data-theme', t);
-  })();
+  var t = localStorage.getItem('cw_theme') || 'dark';
+  document.documentElement.setAttribute('data-theme', t);
 </script>
 </head>
-<body class="admin-page scroll-page">
+<body>
 
-<!-- ═══════════ ТОПБАР ═══════════ -->
 <header class="topbar-drawing">
   <div class="topbar-left">
-    <a class="brand" href="/static/index.html">📡 CoworkWiFi Planner</a>
-    <div style="display:flex;gap:2px;margin-left:16px">
-      <a class="menu-item" href="/static/index.html">Главная</a>
-      <a class="menu-item" href="/static/editor.html">Редактор</a>
-      <a class="menu-item" href="/static/measurements.html">Измерения</a>
-      <a class="menu-item active" href="/static/admin.html">Админ</a>
-    </div>
+    <span class="brand">📡 CoworkWiFi Planner</span>
+    <a class="menu-item" href="/static/index.html">Главная</a>
+    <a class="menu-item" href="/static/editor.html">Редактор</a>
+    <a class="menu-item" href="/static/measurements.html">Измерения</a>
+    <a class="menu-item active" href="/static/admin.html">Админ</a>
   </div>
   <div class="spacer"></div>
   <div class="topbar-right">
-    <button class="btn-icon" id="themeToggle" title="Сменить тему">☀</button>
-    <span class="zoom-label" id="userName" style="min-width:auto;padding:0 8px"></span>
+    <button class="btn-icon" id="themeToggle" title="Тема">☀</button>
+    <div class="avatar" id="userAvatar">?</div>
+    <span class="brand" id="userName" style="font-size:12px;font-weight:400;color:var(--text-dim)"></span>
     <button class="btn-icon" id="logoutBtn" title="Выйти">⏻</button>
   </div>
 </header>
 
-<!-- ═══════════ КОНТЕНТ ═══════════ -->
-<main class="admin-container">
+<main class="container">
   <h1>Панель администратора</h1>
 
   <div class="tabs">
     <button class="tab active" data-tab="dashboard">📊 Обзор</button>
     <button class="tab" data-tab="users">👥 Пользователи</button>
     <button class="tab" data-tab="projects">📁 Проекты</button>
-    <button class="tab" data-tab="audit">📜 Журнал действий</button>
+    <button class="tab" data-tab="audit">📜 Журнал</button>
   </div>
 
-  <!-- Обзор -->
   <section id="tab-dashboard">
     <div class="metric-grid" id="metricGrid"></div>
     <div class="chart-row">
-      <div class="chart-box">
-        <h3>Регистрации за 7 дней</h3>
-        <div class="bar-chart" id="regChart"></div>
-      </div>
-      <div class="chart-box">
-        <h3>Проекты за 7 дней</h3>
-        <div class="bar-chart" id="projChart"></div>
-      </div>
+      <div class="chart-box"><h3>Регистрации за 7 дней</h3><div class="bar-chart" id="regChart"></div></div>
+      <div class="chart-box"><h3>Проекты за 7 дней</h3><div class="bar-chart" id="projChart"></div></div>
     </div>
     <div class="chart-row">
-      <div class="chart-box">
-        <h3>Распределение по ролям</h3>
-        <div id="roleChart"></div>
-      </div>
-      <div class="chart-box">
-        <h3>Содержимое проектов</h3>
-        <div id="contentChart"></div>
-      </div>
+      <div class="chart-box"><h3>Роли</h3><div id="roleChart"></div></div>
+      <div class="chart-box"><h3>Содержимое проектов</h3><div id="contentChart"></div></div>
     </div>
   </section>
 
-  <!-- Пользователи -->
   <section id="tab-users" style="display:none">
     <div class="toolbar-bar">
       <h2>Пользователи</h2>
-      <button class="btn-primary-sm" id="addUserBtn">➕ Добавить пользователя</button>
+      <button class="btn-primary-sm" id="addUserBtn">➕ Добавить</button>
     </div>
     <div class="table-wrap">
       <table class="table" id="usersTable">
-        <thead>
-          <tr>
-            <th>ID</th><th>ФИО</th><th>Email</th>
-            <th>Роль</th><th>Статус</th>
-            <th>Зарегистрирован</th><th>Последний вход</th>
-            <th>Действия</th>
-          </tr>
-        </thead>
+        <thead><tr>
+          <th>ID</th><th>ФИО</th><th>Email</th><th>Роль</th>
+          <th>Статус</th><th>Регистрация</th><th>Последний вход</th><th></th>
+        </tr></thead>
         <tbody></tbody>
       </table>
     </div>
   </section>
 
-  <!-- Проекты -->
   <section id="tab-projects" style="display:none">
-    <div class="toolbar-bar">
-      <h2>Все проекты</h2>
-    </div>
+    <div class="toolbar-bar"><h2>Все проекты</h2></div>
     <div class="table-wrap">
       <table class="table" id="projectsTable">
-        <thead>
-          <tr>
-            <th>ID</th><th>Название</th><th>Владелец</th>
-            <th>Размер</th><th>Элементов</th>
-            <th>Устройств</th><th>AP</th>
-            <th>Создан</th><th></th>
-          </tr>
-        </thead>
+        <thead><tr>
+          <th>ID</th><th>Название</th><th>Владелец</th><th>Размер</th>
+          <th>Элем.</th><th>Устр.</th><th>AP</th><th>Создан</th><th></th>
+        </tr></thead>
         <tbody></tbody>
       </table>
     </div>
   </section>
 
-  <!-- Журнал -->
   <section id="tab-audit" style="display:none">
     <div class="toolbar-bar">
       <h2>Журнал действий</h2>
-      <button class="btn-primary-sm" id="refreshAudit">🔄 Обновить</button>
+      <button class="btn" id="refreshAudit">🔄 Обновить</button>
     </div>
     <div class="table-wrap">
       <table class="table" id="auditTable">
-        <thead>
-          <tr>
-            <th>Время</th><th>Пользователь</th>
-            <th>Действие</th><th>Сущность</th><th>ID</th>
-          </tr>
-        </thead>
+        <thead><tr><th>Время</th><th>Пользователь</th><th>Действие</th><th>Сущность</th><th>ID</th></tr></thead>
         <tbody></tbody>
       </table>
     </div>
   </section>
 </main>
 
-<!-- ═══════════ МОДАЛКА: НОВЫЙ ПОЛЬЗОВАТЕЛЬ ═══════════ -->
+<footer class="drawing-footer">
+  <span>📡 CoworkWiFi Planner</span>
+  <span>Панель администратора</span>
+  <span>Скрыпкин М. Ю. · СИП-323/24</span>
+</footer>
+
+<!-- Модалка добавления пользователя -->
 <div class="modal-mask" id="userModal">
   <div class="modal">
     <h2>Новый пользователь</h2>
-    <label>ФИО</label>
-    <input type="text" id="nuName" placeholder="Иван Иванов">
-    <label>Email</label>
-    <input type="email" id="nuEmail" placeholder="user@example.com">
-    <label>Пароль</label>
-    <input type="password" id="nuPassword" placeholder="минимум 6 символов">
+    <label>ФИО</label><input type="text" id="nuName" placeholder="Иван Иванов">
+    <label>Email</label><input type="email" id="nuEmail" placeholder="user@example.com">
+    <label>Пароль</label><input type="password" id="nuPassword" placeholder="минимум 6 символов">
     <label>Роль</label>
     <select id="nuRole">
       <option value="analyst">Аналитик</option>
@@ -154,19 +122,252 @@
 </div>
 
 <script src="/static/js/api.js"></script>
-<script src="/static/js/admin.js"></script>
+<script src="/static/js/report.js"></script>
 <script>
-  (function () {
-    var btn = document.getElementById('themeToggle');
-    if (!btn) return;
-    btn.textContent = document.documentElement.getAttribute('data-theme') === 'dark' ? '☀' : '🌙';
-    btn.addEventListener('click', function () {
-      var next = document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
-      document.documentElement.setAttribute('data-theme', next);
-      localStorage.setItem('cw_theme', next);
-      btn.textContent = next === 'dark' ? '☀' : '🌙';
+(function () {
+  // Тема
+  var themeBtn = document.getElementById('themeToggle');
+  themeBtn.textContent = (localStorage.getItem('cw_theme') || 'dark') === 'dark' ? '☀' : '🌙';
+  themeBtn.addEventListener('click', function () {
+    var next = document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-theme', next);
+    localStorage.setItem('cw_theme', next);
+    themeBtn.textContent = next === 'dark' ? '☀' : '🌙';
+  });
+
+  var me = null;
+
+  if (!API.getToken()) { window.location.href = '/static/login.html'; return; }
+
+  API.get('/api/auth/me').then(function (u) {
+    me = u;
+    document.getElementById('userName').textContent = u.full_name;
+    document.getElementById('userAvatar').textContent =
+      (u.full_name || '?').split(' ').map(function (s) { return s[0] || ''; }).join('').slice(0, 2).toUpperCase();
+    if (u.role !== 'admin') {
+      alert('Доступ только для администратора');
+      window.location.href = '/static/index.html';
+      return;
+    }
+    init();
+  }).catch(function () {
+    API.clearToken();
+    window.location.href = '/static/login.html';
+  });
+
+  document.getElementById('logoutBtn').addEventListener('click', function () {
+    API.clearToken();
+    window.location.href = '/static/login.html';
+  });
+
+  function init() {
+    document.querySelectorAll('.tab').forEach(function (t) {
+      t.addEventListener('click', function () {
+        document.querySelectorAll('.tab').forEach(function (x) { x.classList.remove('active'); });
+        t.classList.add('active');
+        var tab = t.dataset.tab;
+        ['dashboard', 'users', 'projects', 'audit'].forEach(function (name) {
+          document.getElementById('tab-' + name).style.display = (name === tab) ? '' : 'none';
+        });
+        if (tab === 'dashboard') loadMetrics();
+        if (tab === 'users') loadUsers();
+        if (tab === 'projects') loadProjects();
+        if (tab === 'audit') loadAudit();
+      });
     });
-  })();
+    loadMetrics();
+
+    var userModal = document.getElementById('userModal');
+    document.getElementById('addUserBtn').addEventListener('click', function () {
+      document.getElementById('nuName').value = '';
+      document.getElementById('nuEmail').value = '';
+      document.getElementById('nuPassword').value = '';
+      document.getElementById('nuRole').value = 'analyst';
+      userModal.classList.add('show');
+    });
+    document.getElementById('nuCancel').addEventListener('click', function () {
+      userModal.classList.remove('show');
+    });
+    document.getElementById('nuCreate').addEventListener('click', function () {
+      var data = {
+        full_name: document.getElementById('nuName').value.trim(),
+        email: document.getElementById('nuEmail').value.trim(),
+        password: document.getElementById('nuPassword').value,
+        role: document.getElementById('nuRole').value
+      };
+      if (!data.full_name || !data.email || data.password.length < 6) {
+        alert('Заполните все поля (пароль ≥ 6 символов)');
+        return;
+      }
+      API.post('/api/users/', data).then(function () {
+        userModal.classList.remove('show');
+        loadUsers();
+      }).catch(function (err) { alert(err.message); });
+    });
+
+    document.getElementById('refreshAudit').addEventListener('click', loadAudit);
+  }
+
+  function loadMetrics() {
+    API.get('/api/admin/metrics').then(function (m) {
+      document.getElementById('metricGrid').innerHTML =
+        card('Пользователей', m.users.total, m.users.active + ' активных', 'accent') +
+        card('Проектов', m.projects.total, m.projects.today + ' сегодня', '') +
+        card('AP', m.aps.total, 'всего', 'ok') +
+        card('Устройств', m.devices.total, 'техника + IoT', '') +
+        card('Элементов', m.elements.total, 'стены, мебель', 'warn');
+      barChart('regChart', m.registrations_7d, false);
+      barChart('projChart', m.projects_7d, true);
+      roleChart(m.users.by_role, m.users.total);
+      contentChart(m);
+    });
+  }
+
+  function card(label, value, sub, cls) {
+    return '<div class="metric-card ' + (cls || '') + '">' +
+      '<div class="label">' + label + '</div>' +
+      '<div class="value">' + value + '</div>' +
+      '<div class="sub">' + (sub || '') + '</div></div>';
+  }
+
+  function barChart(elId, data, green) {
+    var max = Math.max.apply(null, data.map(function (d) { return d.count; })) || 1;
+    document.getElementById(elId).innerHTML = data.map(function (d) {
+      var h = (d.count / max) * 100;
+      return '<div class="bar-col"><div class="bar-count">' + d.count + '</div>' +
+        '<div class="bar' + (green ? ' ok' : '') + '" style="height:' + h + '%"></div>' +
+        '<div class="bar-label">' + d.label + '</div></div>';
+    }).join('');
+  }
+
+  function roleChart(byRole, total) {
+    var roles = [
+      { key:'admin', name:'Админы', color:'#f44336' },
+      { key:'engineer', name:'Инженеры', color:'#2196f3' },
+      { key:'analyst', name:'Аналитики', color:'#9c27b0' }
+    ];
+    document.getElementById('roleChart').innerHTML = roles.map(function (r) {
+      var c = byRole[r.key] || 0;
+      var pct = total ? (c / total) * 100 : 0;
+      return '<div class="role-row"><div class="role-name">' + r.name + '</div>' +
+        '<div class="role-bar"><div class="role-fill" style="width:' + pct + '%;background:' + r.color + '"></div></div>' +
+        '<div class="role-count">' + c + '</div></div>';
+    }).join('');
+  }
+
+  function contentChart(m) {
+    var items = [
+      { name:'AP', count:m.aps.total, color:'#0e639c' },
+      { name:'Устройства', count:m.devices.total, color:'#2196f3' },
+      { name:'Элементы', count:m.elements.total, color:'#ff9800' }
+    ];
+    var max = Math.max.apply(null, items.map(function (i) { return i.count; })) || 1;
+    document.getElementById('contentChart').innerHTML = items.map(function (i) {
+      var pct = (i.count / max) * 100;
+      return '<div class="role-row"><div class="role-name">' + i.name + '</div>' +
+        '<div class="role-bar"><div class="role-fill" style="width:' + pct + '%;background:' + i.color + '"></div></div>' +
+        '<div class="role-count">' + i.count + '</div></div>';
+    }).join('');
+  }
+
+  function loadUsers() {
+    API.get('/api/users/').then(function (users) {
+      var tb = document.querySelector('#usersTable tbody');
+      tb.innerHTML = '';
+      users.forEach(function (u) {
+        var tr = document.createElement('tr');
+        var role = '<span class="badge ' + u.role + '">' + roleRu(u.role) + '</span>';
+        var status = u.is_active ? '<span class="badge active">активен</span>' : '<span class="badge blocked">блок</span>';
+        var self = me && me.id === u.id;
+        var actions = self ? '<span style="color:var(--text-dim);font-size:11px">(это вы)</span>'
+          : '<button class="btn-icon" data-act="role" data-id="' + u.id + '" title="Роль">🎭</button>' +
+            '<button class="btn-icon" data-act="block" data-id="' + u.id + '" title="Блок">' + (u.is_active?'🔒':'🔓') + '</button>' +
+            '<button class="btn-icon" data-act="delete" data-id="' + u.id + '" title="Удалить">🗑</button>';
+        tr.innerHTML = '<td>' + u.id + '</td><td>' + esc(u.full_name) + '</td>' +
+          '<td>' + esc(u.email) + '</td><td>' + role + '</td><td>' + status + '</td>' +
+          '<td>' + fmt(u.created_at) + '</td>' +
+          '<td>' + (u.last_login ? fmt(u.last_login) : '—') + '</td>' +
+          '<td style="white-space:nowrap">' + actions + '</td>';
+        tb.appendChild(tr);
+      });
+      tb.querySelectorAll('button[data-act]').forEach(function (b) {
+        b.addEventListener('click', function () {
+          var id = parseInt(b.dataset.id, 10);
+          var act = b.dataset.act;
+          var user = users.find(function (x) { return x.id === id; });
+          if (act === 'block') API.put('/api/users/' + id + '/block').then(loadUsers);
+          else if (act === 'delete') {
+            if (!confirm('Удалить ' + user.email + '?')) return;
+            API.del('/api/users/' + id).then(loadUsers).catch(function (e) { alert(e.message); });
+          } else if (act === 'role') {
+            var r = prompt('Роль (admin/engineer/analyst):', user.role);
+            if (!r) return;
+            API.put('/api/users/' + id + '/role?role=' + r).then(loadUsers).catch(function (e) { alert(e.message); });
+          }
+        });
+      });
+    });
+  }
+
+  function loadProjects() {
+    API.get('/api/admin/projects').then(function (list) {
+      var tb = document.querySelector('#projectsTable tbody');
+      tb.innerHTML = '';
+      if (!list.length) {
+        tb.innerHTML = '<tr><td colspan="9"><div class="empty"><div class="big">📁</div>Проектов нет</div></td></tr>';
+        return;
+      }
+      list.forEach(function (p) {
+        var tr = document.createElement('tr');
+        tr.innerHTML = '<td>' + p.id + '</td><td><b>' + esc(p.name) + '</b></td>' +
+          '<td>' + (p.owner_name ? esc(p.owner_name) : '—') + '</td>' +
+          '<td>' + p.width_m + '×' + p.height_m + ' м</td>' +
+          '<td>' + p.elements_count + '</td><td>' + p.devices_count + '</td><td>' + p.aps_count + '</td>' +
+          '<td>' + fmt(p.created_at) + '</td>' +
+          '<td><button class="btn-icon" data-del="' + p.id + '" title="Удалить">🗑</button></td>';
+        tb.appendChild(tr);
+      });
+      tb.querySelectorAll('button[data-del]').forEach(function (b) {
+        b.addEventListener('click', function () {
+          var id = parseInt(b.dataset.del, 10);
+          if (!confirm('Удалить проект #' + id + '?')) return;
+          API.del('/api/projects/' + id).then(loadProjects);
+        });
+      });
+    });
+  }
+
+  function loadAudit() {
+    API.get('/api/admin/audit-log?limit=100').then(function (logs) {
+      var tb = document.querySelector('#auditTable tbody');
+      tb.innerHTML = '';
+      if (!logs.length) {
+        tb.innerHTML = '<tr><td colspan="5"><div class="empty">Пусто</div></td></tr>';
+        return;
+      }
+      logs.forEach(function (l) {
+        var tr = document.createElement('tr');
+        tr.innerHTML = '<td>' + fmt(l.created_at) + '</td>' +
+          '<td>' + (l.user_name ? esc(l.user_name) : '—') + '</td>' +
+          '<td><code style="color:var(--accent)">' + esc(l.action) + '</code></td>' +
+          '<td>' + (l.entity || '—') + '</td><td>' + (l.entity_id || '—') + '</td>';
+        tb.appendChild(tr);
+      });
+    });
+  }
+
+  function roleRu(r) { return { admin:'Админ', engineer:'Инженер', analyst:'Аналитик' }[r] || r; }
+  function fmt(iso) {
+    if (!iso) return '—';
+    try {
+      var d = new Date(iso);
+      var p = function (n) { return n < 10 ? '0' + n : n; };
+      return p(d.getDate()) + '.' + p(d.getMonth()+1) + '.' + d.getFullYear() +
+        ' ' + p(d.getHours()) + ':' + p(d.getMinutes());
+    } catch (e) { return iso; }
+  }
+  function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+})();
 </script>
 </body>
 </html>
