@@ -170,14 +170,41 @@
 
     html += '</body></html>';
 
-    var w = window.open('', '_blank');
-    if (!w) {
-      alert('Разрешите всплывающие окна для экспорта отчёта');
-      return;
+    // Если библиотека html2pdf загружена — скачиваем файл
+    if (typeof html2pdf !== 'undefined') {
+      var container = document.createElement('div');
+      container.innerHTML = html;
+      
+      // Убираем кнопки печати из PDF
+      var printBar = container.querySelector('.print-bar');
+      if (printBar) printBar.remove();
+
+      // Стилизуем контейнер для PDF
+      container.style.padding = '20px';
+      container.style.background = '#ffffff';
+      container.style.width = '800px'; // Фиксируем ширину для четкости
+
+      var opt = {
+        margin:       10,
+        filename:     'Report_' + (opts.project ? opts.project.name : 'plan') + '.pdf',
+        image:        { type: 'jpeg', quality: 0.98 },
+        html2canvas:  { scale: 2, useCORS: true, letterRendering: true },
+        jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' }
+      };
+
+      // Генерируем и скачиваем
+      html2pdf().set(opt).from(container).save();
+    } else {
+      // Резервный вариант (старое окно печати), если CDN не загрузился
+      var w = window.open('', '_blank');
+      if (!w) {
+        alert('Разрешите всплывающие окна для экспорта отчёта');
+        return;
+      }
+      w.document.open();
+      w.document.write(html);
+      w.document.close();
     }
-    w.document.open();
-    w.document.write(html);
-    w.document.close();
   }
 
   function getStyles() {

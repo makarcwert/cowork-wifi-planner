@@ -7,15 +7,60 @@
 <link rel="icon" href="data:,">
 <link rel="stylesheet" href="/static/css/style.css">
 <script>
-  var t = localStorage.getItem('cw_theme') || 'dark';
-  document.documentElement.setAttribute('data-theme', t);
+  (function () {
+    var t = localStorage.getItem('cw_theme') || 'dark';
+    document.documentElement.setAttribute('data-theme', t);
+  })();
 </script>
+<style>
+  /* Карточки-фичи */
+  .feature.clickable {
+    cursor: pointer; transition: border-color .15s, background .15s; position: relative;
+  }
+  .feature.clickable:hover { border-color: var(--accent); background: var(--panel-2); }
+  .feature-num {
+    font-family: 'Consolas', 'Monaco', monospace; font-size: 11px;
+    color: var(--text-dim); letter-spacing: 1px; margin-bottom: 8px;
+  }
+  .feature.clickable:hover .feature-num { color: var(--accent); }
+  .feature-more {
+    display: inline-block; margin-top: 10px; font-size: 11px;
+    color: var(--text-dim); border-bottom: 1px dotted var(--text-dim);
+    transition: color .15s, border-color .15s;
+  }
+  .feature.clickable:hover .feature-more { color: var(--accent); border-color: var(--accent); }
+
+  /* Модалка */
+  .feature-modal {
+    position: fixed; inset: 0; background: rgba(0, 0, 0, .7); display: none;
+    align-items: center; justify-content: center; z-index: 1000; padding: 20px;
+  }
+  .feature-modal.show { display: flex; }
+  .feature-modal-inner {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 6px;
+    max-width: 520px; width: 100%; max-height: 80vh; overflow-y: auto;
+    padding: 24px; position: relative; box-shadow: 0 12px 40px rgba(0, 0, 0, .5);
+    font-family: 'Segoe UI', Tahoma, sans-serif;
+  }
+  .feature-modal-close {
+    position: absolute; top: 12px; right: 12px;
+    background: transparent; border: 1px solid transparent; color: var(--text-dim);
+    width: 28px; height: 28px; border-radius: 4px; cursor: pointer;
+    font-size: 14px; display: flex; align-items: center; justify-content: center;
+  }
+  .feature-modal-close:hover { background: var(--panel-2); color: var(--text); border-color: var(--border); }
+  .feature-modal h2 { font-size: 16px; margin: 0 0 4px; color: var(--text); font-weight: 600; padding-right: 30px; }
+  .feature-modal .fm-sub { font-size: 11px; color: var(--text-dim); margin-bottom: 16px; font-family: 'Consolas', 'Monaco', monospace; letter-spacing: .5px; }
+  .feature-modal .fm-body { font-size: 13px; line-height: 1.65; color: var(--text); }
+  .feature-modal .fm-body p { margin: 0 0 10px; }
+  .feature-modal .fm-body p:last-child { margin-bottom: 0; }
+</style>
 </head>
 <body>
 
 <header class="topbar-drawing">
   <div class="topbar-left">
-    <span class="brand">📡 CoworkWiFi Planner</span>
+    <a class="brand-link" href="/static/index.html">📡 CoworkWiFi Planner</a>
     <a class="menu-item active" href="/static/index.html">Главная</a>
     <a class="menu-item" href="/static/editor.html">Редактор</a>
     <a class="menu-item" href="/static/measurements.html">Измерения</a>
@@ -42,105 +87,107 @@
     </p>
     <div class="hero-actions">
       <a class="hero-btn" href="/static/editor.html">Приступить к созданию →</a>
-      <a class="hero-btn" href="/docs" target="_blank"
-         style="background:var(--panel-2);color:var(--text);border:1px solid var(--border)">
-        API-документация
-      </a>
     </div>
   </section>
 
-  <h2 style="text-align:center;margin:40px 0 4px">Что умеет сайт</h2>
+  <h2 style="text-align:center;margin:40px 0 4px">Возможности</h2>
   <p style="text-align:center;color:var(--text-dim);font-size:13px;margin-bottom:24px">
-    Полный цикл проектирования сети — от стен до тепловой карты
+    Нажмите на карточку, чтобы открыть описание
   </p>
 
   <div class="features">
-    <div class="feature">
-      <div class="feature-icon">🗺</div>
+
+    <div class="feature clickable" data-feature="plan" tabindex="0" role="button">
+      <div class="feature-num">01 / ПЛАН</div>
       <h3>Создание плана</h3>
       <p>Стены с выбором материала — бетон, кирпич, дерево, стекло, гипсокартон.</p>
+      <span class="feature-more">Подробнее</span>
     </div>
-    <div class="feature">
-      <div class="feature-icon">📡</div>
+
+    <div class="feature clickable" data-feature="ap" tabindex="0" role="button">
+      <div class="feature-num">02 / ОБОРУДОВАНИЕ</div>
       <h3>Точки доступа</h3>
       <p>Настройка мощности, усиления, частоты и канала для каждой AP.</p>
+      <span class="feature-more">Подробнее</span>
     </div>
-    <div class="feature">
-      <div class="feature-icon">🔀</div>
+
+    <div class="feature clickable" data-feature="switches" tabindex="0" role="button">
+      <div class="feature-num">03 / СКС</div>
       <h3>Коммутаторы и PoE</h3>
       <p>Расчёт PoE-бюджета, кабельных трасс, превышения 100 м.</p>
+      <span class="feature-more">Подробнее</span>
     </div>
-    <div class="feature">
-      <div class="feature-icon">🌊</div>
+
+    <div class="feature clickable" data-feature="heatmap" tabindex="0" role="button">
+      <div class="feature-num">04 / РАСЧЁТ</div>
       <h3>Тепловые карты</h3>
       <p>Расчёт RSSI с учётом затухания на стенах. Карта покрытия прямо на плане.</p>
+      <span class="feature-more">Подробнее</span>
     </div>
-    <div class="feature">
-      <div class="feature-icon">💡</div>
+
+    <div class="feature clickable" data-feature="iot" tabindex="0" role="button">
+      <div class="feature-num">05 / IOT</div>
       <h3>IoT-устройства</h3>
       <p>Умное освещение, датчики климата, замки, домофоны — по отдельному SSID.</p>
+      <span class="feature-more">Подробнее</span>
     </div>
-    <div class="feature">
-      <div class="feature-icon">🔐</div>
+
+    <div class="feature clickable" data-feature="roles" tabindex="0" role="button">
+      <div class="feature-num">06 / ДОСТУП</div>
       <h3>Роли и права</h3>
       <p>Администратор, инженер, аналитик — разграничение доступа к функциям.</p>
+      <span class="feature-more">Подробнее</span>
     </div>
-    <div class="feature">
-      <div class="feature-icon">📊</div>
+
+    <div class="feature clickable" data-feature="stats" tabindex="0" role="button">
+      <div class="feature-num">07 / АНАЛИЗ</div>
       <h3>Статистика</h3>
       <p>Проценты покрытия, мёртвые зоны, средний сигнал по всей площади.</p>
+      <span class="feature-more">Подробнее</span>
     </div>
-    <div class="feature">
-      <div class="feature-icon">📄</div>
+
+    <div class="feature clickable" data-feature="export" tabindex="0" role="button">
+      <div class="feature-num">08 / ОТЧЁТЫ</div>
       <h3>Экспорт</h3>
       <p>PNG-схема, CSV с координатами и статистикой, спецификация оборудования.</p>
+      <span class="feature-more">Подробнее</span>
     </div>
-  </div>
 
-  <div class="about-card">
-    <div class="uni">Колледж современных технологий им. М.Ф. Панова</div>
-    <h2>План внедрения беспроводной сети офиса
-      и программа проверки зоны покрытия в коворкинге</h2>
-    <p>Цель — создание инструмента для объективной оценки и визуализации
-      зоны покрытия Wi-Fi в помещениях коворкинга с учётом архитектурных
-      особенностей и требований к нагрузке.</p>
-    <p>Программа обеспечивает измерение RSSI, SNR, интерференции,
-      построение тепловых карт и их наложение на план.</p>
-    <div class="about-divider"></div>
-    <p style="font-size:11px;color:var(--text-dim);margin:0">
-      Специальность <strong>09.02.07</strong> — Информационные системы и программирование
-    </p>
-    <div class="author-info">
-      <div class="author-item">
-        <div class="lbl">Студент</div>
-        <div class="val">Скрыпкин М. Ю.</div>
-      </div>
-      <div class="author-item">
-        <div class="lbl">Группа</div>
-        <div class="val">СИП-323/24</div>
-      </div>
-      <div class="author-item">
-        <div class="lbl">Учебный год</div>
-        <div class="val">2026 — 2027</div>
-      </div>
-    </div>
   </div>
 
 </main>
 
+<!-- Модалка -->
+<div class="feature-modal" id="featureModal" role="dialog" aria-modal="true" aria-hidden="true">
+  <div class="feature-modal-inner">
+    <!-- Новый крестик -->
+    <button class="feature-modal-close btn-close" id="featureModalClose" aria-label="Закрыть">
+      <svg viewBox="0 0 100 100" fill="none" stroke="currentColor" stroke-width="12" stroke-linecap="round" stroke-linejoin="round">
+        <line x1="25" y1="25" x2="75" y2="75"></line>
+        <line x1="75" y1="25" x2="25" y2="75"></line>
+      </svg>
+    </button>
+    <h2 id="fmTitle"></h2>
+    <div class="fm-sub" id="fmSub"></div>
+    <div class="fm-body" id="fmBody"></div>
+  </div>
+</div>
+
 <footer class="drawing-footer">
-  <span>📡 CoworkWiFi Planner</span>
-  <span>Курсовой проект 2026–2027</span>
-  <span>Скрыпкин М. Ю. · СИП-323/24</span>
+  <span>CoworkWiFi Planner 2026-2027</span>
 </footer>
 
-<script src="/static/js/api.js"></script>
-<script>
-(function () {
-  // Тема
-  var t = localStorage.getItem('cw_theme') || 'dark';
+<script src="/static/js/api.js" defer></script>
+
+<script defer>
+document.addEventListener('DOMContentLoaded', function () {
+  'use strict';
+
+  // ==================== ТЕМА ====================
   var themeBtn = document.getElementById('themeToggle');
-  themeBtn.textContent = t === 'dark' ? '☀' : '🌙';
+  var currentTheme = document.documentElement.getAttribute('data-theme') || 'dark';
+  themeBtn.textContent = currentTheme === 'dark' ? '☀' : '🌙';
+
   themeBtn.addEventListener('click', function () {
     var next = document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
     document.documentElement.setAttribute('data-theme', next);
@@ -148,28 +195,66 @@
     themeBtn.textContent = next === 'dark' ? '☀' : '🌙';
   });
 
-  // Пользователь
-  if (!API.getToken()) {
-    window.location.href = '/static/login.html';
-    return;
-  }
+  // ==================== АВТОРИЗАЦИЯ ====================
+  if (!API.getToken()) { window.location.replace('/static/login.html'); return; }
+
   API.get('/api/auth/me').then(function (u) {
-    document.getElementById('userName').textContent = u.full_name;
-    document.getElementById('userAvatar').textContent =
-      (u.full_name || '?').split(' ').map(function (s) { return s[0] || ''; }).join('').slice(0, 2).toUpperCase();
-    if (u.role === 'admin') {
-      document.getElementById('adminLink').style.display = '';
-    }
+    document.getElementById('userName').textContent = u.full_name || '';
+    document.getElementById('userAvatar').textContent = (u.full_name || '?').split(' ').map(function (s) { return s[0] || ''; }).join('').slice(0, 2).toUpperCase();
+    if (u.role === 'admin') document.getElementById('adminLink').style.display = '';
   }).catch(function () {
     API.clearToken();
-    window.location.href = '/static/login.html';
+    window.location.replace('/static/login.html');
   });
 
   document.getElementById('logoutBtn').addEventListener('click', function () {
     API.clearToken();
-    window.location.href = '/static/login.html';
+    window.location.replace('/static/login.html');
   });
-})();
+
+  // ==================== МОДАЛКА ====================
+  var INFO = {
+    plan: { title: 'Создание плана', sub: 'SVG-редактор стен и помещений', body: '<p>Редактор позволяет нарисовать план помещения с нуля: стены, двери, комнаты, текст. Пять материалов стен различаются коэффициентом затухания — от стекла (3 дБ) до бетона (25 дБ). От материала зависит расчёт покрытия.</p><p>Стены строятся по клику: первая точка — начало, вторая — конец. Работает привязка к сетке 0.5 м. Двери автоматически прорезают стену и рисуют дугу открывания.</p><p>Схема хранится в SVG и сохраняется в БД. Отмена и повтор — до 50 шагов.</p>' },
+    ap: { title: 'Точки доступа', sub: 'Настройка и авто-расстановка', body: '<p>Точки доступа добавляются из каталога реальных моделей: Cisco, Ubiquiti, TP-Link, MikroTik, Huawei, Eltex. Для каждой настраиваются мощность (5–30 dBm), усиление (0–15 dBi), диапазон и канал.</p><p>Режим авто-расстановки подбирает количество AP итеративно: пока покрытие ниже цели, добавляется ещё одна точка. Каналы разносятся автоматически — 1/6/11 для 2.4 ГГц, 36/44/149/157 для 5 ГГц. Стены учитываются при расстановке: если точка «спрятана» за бетоном, добавляется дополнительная рядом с клиентами.</p>' },
+    switches: { title: 'Коммутаторы и PoE', sub: 'Инфраструктура и кабельные трассы', body: '<p>Для каждой точки доступа рассчитывается ближайший коммутатор и длина кабельной линии. Учитывается коэффициент 1.1 на изгибы трассы. Линии длиннее 100 м подсвечиваются как превышение лимита Cat5e.</p><p>PoE-бюджет считается по потреблению AP: 12.5 Вт для 2.4 ГГц, 15.5 Вт для 5 ГГц, 18 Вт для 6 ГГц. Если суммарное потребление превышает бюджет коммутаторов — выводится предупреждение. Также проверяется, что портов хватает на все AP.</p>' },
+    heatmap: { title: 'Тепловые карты', sub: 'RSSI, SNR и интерференция', body: '<p>Три слоя: RSSI (уровень сигнала), SNR (отношение сигнал/шум) и интерференция (помехи от соседних AP). Расчёт идёт по формуле FSPL с учётом затухания на каждой стене, которую пересекает луч от AP до точки.</p><p>Интерференция считается через линейное суммирование мощностей соседних AP с учётом перекрытия каналов. Это позволяет увидеть, где точки мешают друг другу.</p><p>Карта рисуется на Canvas поверх плана. Есть режим 3D-визуализации: поверхность, высота которой равна уровню сигнала.</p>' },
+    iot: { title: 'IoT-устройства', sub: 'Освещение, датчики, замки', body: '<p>Умные устройства выносятся в отдельный SSID с VLAN и своим профилем трафика: свет — 0.5 Мбит/с, датчик — 0.2, замок — 0.3, домофон — 5, кондиционер — 1.</p><p>В редакторе у IoT-устройств отдельная палитра. Все они учитываются при расчёте нагрузки на точки доступа и попадают в отчёт по оборудованию.</p>' },
+    roles: { title: 'Роли и права', sub: 'Разграничение доступа', body: '<p>Три роли: администратор (полный доступ и админ-панель), инженер (проектирование и замеры), аналитик (просмотр и отчёты). Первый зарегистрированный пользователь автоматически становится администратором.</p><p>Аутентификация на JWT, пароли хранятся в виде PBKDF2-SHA256. Каждый вход и регистрация пишутся в журнал аудита. Администратор может менять роли, блокировать и удалять пользователей.</p>' },
+    stats: { title: 'Статистика', sub: 'Покрытие и мёртвые зоны', body: '<p>После расчёта тепловой карты считается процент площади по уровням сигнала: отлично (≥ −65 дБм), хорошо (−65…−75), слабо (−75…−85), мёртвая зона (< −85). Показываются средний RSSI, минимум, максимум и координаты проблемных точек.</p><p>Отдельно считается нагрузка на каждую AP: сколько клиентов к ней привязано, какой суммарный трафик и какой процент утилизации ёмкости. Если какая-то точка перегружена — выводится рекомендация.</p>' },
+    export: { title: 'Экспорт', sub: 'PDF, XLSX, CSV, PNG', body: '<p>Четыре формата: PDF (для печати, через окно печати браузера), XLSX (шесть листов: сводка, AP, устройства, стены, измерения, статистика), CSV (координаты и статистика покрытия), PNG (схема плана с тепловой картой).</p><p>Отдельно есть спецификация оборудования — перечень AP, коммутаторов, кабеля и клиентских устройств с количеством и примечаниями.</p>' }
+  };
+
+  var modal = document.getElementById('featureModal'), modalClose = document.getElementById('featureModalClose');
+
+  function openFeature(key) {
+    var f = INFO[key]; if (!f) return;
+    document.getElementById('fmTitle').textContent = f.title;
+    document.getElementById('fmSub').textContent = f.sub;
+    document.getElementById('fmBody').innerHTML = f.body;
+    
+    // Компенсация ширины скроллбара
+    var scrollbarWidth = window.innerWidth - document.documentElement.clientWidth;
+    document.body.style.paddingRight = scrollbarWidth + 'px';
+    
+    modal.classList.add('show'); modal.setAttribute('aria-hidden', 'false'); document.body.style.overflow = 'hidden';
+    setTimeout(function () { modalClose.focus(); }, 30);
+  }
+
+  function closeFeature() {
+    modal.classList.remove('show'); modal.setAttribute('aria-hidden', 'true');
+    document.body.style.overflow = ''; document.body.style.paddingRight = '';
+  }
+
+  document.querySelectorAll('.feature.clickable').forEach(function (card) {
+    card.addEventListener('click', function () { openFeature(card.dataset.feature); });
+    card.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openFeature(card.dataset.feature); } });
+  });
+
+  modalClose.addEventListener('click', closeFeature);
+  modal.addEventListener('click', function (e) { if (e.target === modal) closeFeature(); });
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && modal.classList.contains('show')) closeFeature(); });
+
+});
 </script>
 </body>
 </html>

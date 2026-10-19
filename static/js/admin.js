@@ -5,13 +5,29 @@
   'use strict';
 
   var me = null;
+  var allUsers = [];
+  var allProjects = [];
+  var currentTab = 'dashboard';
+
+  // ---- Утилита: Уведомления (Toast) ----
+  function showToast(message, type) {
+    var container = document.getElementById('toast-container');
+    var toast = document.createElement('div');
+    toast.className = 'toast ' + (type || 'success');
+    toast.innerHTML = (type === 'error' ? '❌ ' : '✅ ') + message;
+    container.appendChild(toast);
+    setTimeout(function () {
+      toast.style.opacity = '0';
+      setTimeout(function () { toast.remove(); }, 300);
+    }, 3000);
+  }
 
   // ---- Проверка авторизации ----
   API.get('/api/auth/me')
     .then(function (u) {
       me = u;
-      var un = document.getElementById('userName');
-      if (un) un.textContent = u.full_name;
+      document.getElementById('userName').textContent = u.full_name;
+      document.getElementById('userAvatar').textContent = (u.full_name || '?').split(' ').map(s => s[0] || '').join('').slice(0, 2).toUpperCase();
 
       if (u.role !== 'admin') {
         alert('Доступ только для администратора');
@@ -36,28 +52,52 @@
     // Вкладки
     document.querySelectorAll('.tab').forEach(function (t) {
       t.addEventListener('click', function () {
-        document.querySelectorAll('.tab').forEach(function (x) {
-          x.classList.remove('active');
-        });
+        document.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
         t.classList.add('active');
-
-        var tab = t.dataset.tab;
+        currentTab = t.dataset.tab;
+        
         ['dashboard', 'users', 'projects', 'audit'].forEach(function (name) {
-          var el = document.getElementById('tab-' + name);
-          if (el) el.style.display = (name === tab) ? '' : 'none';
+          document.getElementById('tab-' + name).style.display = (name === currentTab) ? '' : 'none';
         });
 
-        if (tab === 'dashboard') loadMetrics();
-        if (tab === 'users') loadUsers();
-        if (tab === 'projects') loadProjects();
-        if (tab === 'audit') loadAudit();
+        // Управление поиском
+        var sw = document.getElementById('searchWrapper');
+        var si = document.getElementById('searchInput');
+        if (currentTab === 'users' || currentTab === 'projects') {
+          sw.style.display = '';
+          si.value = '';
+          si.placeholder = currentTab === 'users' ? 'Поиск по ФИО или Email...' : 'Поиск по названию или владельцу...';
+        } else {
+          sw.style.display = 'none';
+        }
+
+        if (currentTab === 'dashboard') loadMetrics();
+        if (currentTab === 'users') loadUsers();
+        if (currentTab === 'projects') loadProjects();
+        if (currentTab === 'audit') loadAudit();
       });
     });
 
-    loadMetrics();
+    // Поиск
+    document.getElementById('searchInput').addEventListener('input', function() {
+      var q = this.value.toLowerCase();
+      if (currentTab === 'users') renderUsers(allUsers.filter(u => (u.full_name||'').toLowerCase().includes(q) || (u.email||'').toLowerCase().includes(q)));
+      if (currentTab === 'projects') renderProjects(allProjects.filter(p => (p.name||'').toLowerCase().includes(q) || (p.owner_name||'').toLowerCase().includes(q)));
+    });
 
-    // Модалка "Новый пользователь"
-    var userModal = document.getElementById('userModal');
+    loadMetrics();
+    initModals();
+  }
+
+  // ============================================================
+  // МОДАЛКИ
+  // ============================================================
+  var userModal = document.getElementById('userModal');
+  var roleModal = document.getElementById('roleModal');
+  var roleTargetId = null;
+
+  function initModals() {
+    // Создание пользователя
     document.getElementById('addUserBtn').addEventListener('click', function () {
       document.getElementById('nuName').value = '';
       document.getElementById('nuEmail').value = '';
@@ -65,9 +105,7 @@
       document.getElementById('nuRole').value = 'analyst';
       userModal.classList.add('show');
     });
-    document.getElementById('nuCancel').addEventListener('click', function () {
-      userModal.classList.remove('show');
-    });
+    document.getElementById('nuCancel').addEventListener('click', () => userModal.classList.remove('show'));
     document.getElementById('nuCreate').addEventListener('click', function () {
       var data = {
         full_name: document.getElementById('nuName').value.trim(),
@@ -76,18 +114,29 @@
         role: document.getElementById('nuRole').value
       };
       if (!data.full_name || !data.email || data.password.length < 6) {
-        alert('Заполните все поля (пароль минимум 6 символов)');
-        return;
+        return showToast('Заполните все поля (пароль > 6 символов)', 'error');
       }
       API.post('/api/users/', data)
         .then(function () {
           userModal.classList.remove('show');
+          showToast('Пользователь ' + data.full_name + ' создан');
           loadUsers();
         })
-        .catch(function (err) { alert(err.message); });
+        .catch(function (err) { showToast(err.message, 'error'); });
     });
 
-    document.getElementById('refreshAudit').addEventListener('click', loadAudit);
+    // Смена роли
+    document.getElementById('roleCancel').addEventListener('click', () => roleModal.classList.remove('show'));
+    document.getElementById('roleSave').addEventListener('click', function () {
+      var newRole = document.getElementById('roleSelect').value;
+      API.put('/api/users/' + roleTargetId + '/role?role=' + newRole)
+        .then(function () {
+          roleModal.classList.remove('show');
+          showToast('Роль успешно изменена');
+          loadUsers();
+        })
+        .catch(function (err) { showToast(err.message, 'error'); });
+    });
   }
 
   // ============================================================
@@ -95,7 +144,13 @@
   // ============================================================
   function loadMetrics() {
     API.get('/api/admin/metrics').then(function (m) {
-      renderMetricCards(m);
+      document.getElementById('metricGrid').innerHTML =
+        card('Пользователей', m.users.total, m.users.active + ' активных · ' + m.users.new_today + ' новых', 'accent') +
+        card('Проектов', m.projects.total, m.projects.total_area + ' м² спроектировано', 'info') +
+        card('Точек доступа', m.aps.total, 'всего в системе', 'ok') +
+        card('Устройств', m.devices.total, 'техника + IoT', 'info') +
+        card('Элементов', m.elements.total, 'стены, мебель', 'warn');
+      
       renderBarChart('regChart', m.registrations_7d);
       renderBarChart('projChart', m.projects_7d, true);
       renderRoleChart(m.users.by_role, m.users.total);
@@ -103,65 +158,32 @@
     }).catch(function (err) { console.error(err); });
   }
 
-  function renderMetricCards(m) {
-    document.getElementById('metricGrid').innerHTML =
-      card('Пользователей', m.users.total,
-           m.users.active + ' активных · ' + m.users.new_today + ' сегодня', 'accent') +
-      card('Проектов', m.projects.total, m.projects.today + ' сегодня', 'info') +
-      card('Точек доступа', m.aps.total, 'всего в системе', 'ok') +
-      card('Устройств', m.devices.total, 'ПК, принтеры, IoT', 'info') +
-      card('Элементов', m.elements.total, 'стены, мебель, фигуры', 'warn');
-  }
-
   function card(label, value, sub, cls) {
-    return '<div class="metric-card ' + (cls || '') + '">' +
-      '<div class="label">' + label + '</div>' +
-      '<div class="value">' + value + '</div>' +
-      '<div class="sub">' + (sub || '') + '</div></div>';
+    return '<div class="metric-card ' + (cls || '') + '"><div class="label">' + label + '</div><div class="value">' + value + '</div><div class="sub">' + (sub || '') + '</div></div>';
   }
 
   function renderBarChart(elId, data, green) {
     var max = Math.max.apply(null, data.map(function (d) { return d.count; })) || 1;
     document.getElementById(elId).innerHTML = data.map(function (d) {
       var h = (d.count / max) * 100;
-      return '<div class="bar-col">' +
-        '<div class="bar-count">' + d.count + '</div>' +
-        '<div class="bar' + (green ? ' ok' : '') + '" style="height:' + h + '%"></div>' +
-        '<div class="bar-label">' + d.label + '</div></div>';
+      return '<div class="bar-col"><div class="bar-count">' + d.count + '</div><div class="bar' + (green ? ' ok' : '') + '" style="height:' + h + '%"></div><div class="bar-label">' + d.label + '</div></div>';
     }).join('');
   }
 
   function renderRoleChart(byRole, total) {
-    var roles = [
-      { key: 'admin',    name: 'Админы',    color: '#f44336' },
-      { key: 'engineer', name: 'Инженеры',  color: '#0e639c' },
-      { key: 'analyst',  name: 'Аналитики', color: '#858585' }
-    ];
+    var roles = [{ key: 'admin', name: 'Админы', color: '#f44336' }, { key: 'engineer', name: 'Инженеры', color: '#0e639c' }, { key: 'analyst', name: 'Аналитики', color: '#858585' }];
     document.getElementById('roleChart').innerHTML = roles.map(function (r) {
-      var c = byRole[r.key] || 0;
-      var pct = total ? (c / total) * 100 : 0;
-      return '<div class="role-row">' +
-        '<div class="role-name">' + r.name + '</div>' +
-        '<div class="role-bar"><div class="role-fill" style="width:' + pct +
-          '%;background:' + r.color + '"></div></div>' +
-        '<div class="role-count">' + c + '</div></div>';
+      var c = byRole[r.key] || 0, pct = total ? (c / total) * 100 : 0;
+      return '<div class="role-row"><div class="role-name">' + r.name + '</div><div class="role-bar"><div class="role-fill" style="width:' + pct + '%;background:' + r.color + '"></div></div><div class="role-count">' + c + '</div></div>';
     }).join('');
   }
 
   function renderContentChart(m) {
-    var items = [
-      { name: 'AP', count: m.aps.total, color: '#0e639c' },
-      { name: 'Устройства', count: m.devices.total, color: '#3498db' },
-      { name: 'Элементы', count: m.elements.total, color: '#ffc107' }
-    ];
+    var items = [{ name: 'AP', count: m.aps.total, color: '#0e639c' }, { name: 'Устройства', count: m.devices.total, color: '#3498db' }, { name: 'Элементы', count: m.elements.total, color: '#ffc107' }];
     var max = Math.max.apply(null, items.map(function (i) { return i.count; })) || 1;
     document.getElementById('contentChart').innerHTML = items.map(function (i) {
       var pct = (i.count / max) * 100;
-      return '<div class="role-row">' +
-        '<div class="role-name">' + i.name + '</div>' +
-        '<div class="role-bar"><div class="role-fill" style="width:' + pct +
-          '%;background:' + i.color + '"></div></div>' +
-        '<div class="role-count">' + i.count + '</div></div>';
+      return '<div class="role-row"><div class="role-name">' + i.name + '</div><div class="role-bar"><div class="role-fill" style="width:' + pct + '%;background:' + i.color + '"></div></div><div class="role-count">' + i.count + '</div></div>';
     }).join('');
   }
 
@@ -170,61 +192,58 @@
   // ============================================================
   function loadUsers() {
     API.get('/api/users/').then(function (users) {
-      var tbody = document.querySelector('#usersTable tbody');
-      tbody.innerHTML = '';
-      users.forEach(function (u) {
-        var tr = document.createElement('tr');
-        var roleBadge = '<span class="badge ' + u.role + '">' + roleRu(u.role) + '</span>';
-        var statusBadge = u.is_active
-          ? '<span class="badge active">активен</span>'
-          : '<span class="badge blocked">заблокирован</span>';
-        var self = me && me.id === u.id;
-        var actions = self
-          ? '<span style="color:var(--text-muted);font-size:11px">(это вы)</span>'
-          : '<button class="btn-xs" data-act="role" data-id="' + u.id + '">Сменить роль</button> ' +
-            '<button class="btn-xs" data-act="block" data-id="' + u.id + '">' +
-              (u.is_active ? 'Заблокировать' : 'Разблокировать') + '</button> ' +
-            '<button class="btn-xs" data-act="delete" data-id="' + u.id +
-              '" style="color:#f44336">Удалить</button>';
-        tr.innerHTML =
-          '<td>' + u.id + '</td>' +
-          '<td>' + esc(u.full_name) + '</td>' +
-          '<td>' + esc(u.email) + '</td>' +
-          '<td>' + roleBadge + '</td>' +
-          '<td>' + statusBadge + '</td>' +
-          '<td>' + fmtDate(u.created_at) + '</td>' +
-          '<td>' + (u.last_login ? fmtDate(u.last_login) : '—') + '</td>' +
-          '<td>' + actions + '</td>';
-        tbody.appendChild(tr);
-      });
-
-      tbody.querySelectorAll('button[data-act]').forEach(function (b) {
-        b.addEventListener('click', function () {
-          var id = parseInt(b.dataset.id, 10);
-          var act = b.dataset.act;
-          var user = users.find(function (x) { return x.id === id; });
-          if (act === 'block') {
-            API.put('/api/users/' + id + '/block').then(loadUsers);
-          } else if (act === 'delete') {
-            if (!confirm('Удалить ' + user.email + '?')) return;
-            API.del('/api/users/' + id).then(loadUsers)
-              .catch(function (err) { alert(err.message); });
-          } else if (act === 'role') {
-            var roles = ['analyst', 'engineer', 'admin'];
-            var names = { analyst: 'Аналитик', engineer: 'Инженер', admin: 'Администратор' };
-            var newRole = prompt('Текущая: ' + names[user.role] +
-              '\nВведите новую: analyst / engineer / admin', user.role);
-            if (!newRole || roles.indexOf(newRole) < 0) return;
-            API.put('/api/users/' + id + '/role?role=' + newRole).then(loadUsers)
-              .catch(function (err) { alert(err.message); });
-          }
-        });
-      });
+      allUsers = users;
+      renderUsers(users);
     });
   }
 
-  function roleRu(role) {
-    return { admin: 'Админ', engineer: 'Инженер', analyst: 'Аналитик' }[role] || role;
+  function renderUsers(users) {
+    var tbody = document.querySelector('#usersTable tbody');
+    tbody.innerHTML = '';
+    if (!users.length) {
+      tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:20px;color:var(--text-dim)">Ничего не найдено</td></tr>';
+      return;
+    }
+    users.forEach(function (u) {
+      var tr = document.createElement('tr');
+      var roleBadge = '<span class="badge ' + u.role + '">' + roleRu(u.role) + '</span>';
+      var statusBadge = u.is_active ? '<span class="badge active">активен</span>' : '<span class="badge blocked">заблокирован</span>';
+      var self = me && me.id === u.id;
+      
+      var actions = self ? '<span style="color:var(--text-dim);font-size:11px">(это вы)</span>'
+        : '<button class="btn-xs" data-act="role" data-id="' + u.id + '">Роль</button> ' +
+          '<button class="btn-xs" data-act="block" data-id="' + u.id + '">' + (u.is_active ? 'Блок' : 'Разблок') + '</button> ' +
+          '<button class="btn-xs" data-act="delete" data-id="' + u.id + '" style="color:#f44336">Удалить</button>';
+
+      tr.innerHTML = '<td>' + u.id + '</td><td><strong>' + esc(u.full_name) + '</strong></td><td>' + esc(u.email) + '</td><td>' + roleBadge + '</td><td>' + statusBadge + '</td><td>' + fmtDate(u.created_at) + '</td><td>' + (u.last_login ? fmtDate(u.last_login) : '—') + '</td><td>' + actions + '</td>';
+      tbody.appendChild(tr);
+    });
+
+    tbody.querySelectorAll('button[data-act]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        var id = parseInt(b.dataset.id, 10);
+        var act = b.dataset.act;
+        var user = allUsers.find(function (x) { return x.id === id; });
+
+        if (act === 'block') {
+          API.put('/api/users/' + id + '/block').then(function () {
+            showToast(user.is_active ? 'Пользователь заблокирован' : 'Пользователь разблокирован');
+            loadUsers();
+          }).catch(err => showToast(err.message, 'error'));
+        } else if (act === 'delete') {
+          if (!confirm('Удалить пользователя ' + user.email + '?')) return;
+          API.del('/api/users/' + id).then(function () {
+            showToast('Пользователь удалён');
+            loadUsers();
+          }).catch(err => showToast(err.message, 'error'));
+        } else if (act === 'role') {
+          roleTargetId = id;
+          document.getElementById('roleModalEmail').textContent = user.email;
+          document.getElementById('roleSelect').value = user.role;
+          roleModal.classList.add('show');
+        }
+      });
+    });
   }
 
   // ============================================================
@@ -232,41 +251,33 @@
   // ============================================================
   function loadProjects() {
     API.get('/api/admin/projects').then(function (list) {
-      var tbody = document.querySelector('#projectsTable tbody');
-      tbody.innerHTML = '';
-      if (!list.length) {
-        tbody.innerHTML = '<tr><td colspan="9"><div class="empty">' +
-          '<div class="big">📁</div>Проектов пока нет</div></td></tr>';
-        return;
-      }
-      list.forEach(function (p) {
-        var tr = document.createElement('tr');
-        tr.innerHTML =
-          '<td>' + p.id + '</td>' +
-          '<td><strong>' + esc(p.name) + '</strong></td>' +
-          '<td>' + (p.owner_name ? esc(p.owner_name) +
-            '<br><span style="color:var(--text-muted);font-size:11px">' +
-            esc(p.owner_email) + '</span>' : '—') + '</td>' +
-          '<td>' + p.width_m + '×' + p.height_m + ' м</td>' +
-          '<td>' + p.elements_count + '</td>' +
-          '<td>' + p.devices_count + '</td>' +
-          '<td>' + p.aps_count + '</td>' +
-          '<td>' + fmtDate(p.created_at) + '</td>' +
-          '<td>' +
-            '<a class="btn-xs" href="/static/editor.html" target="_blank">Открыть</a> ' +
-            '<button class="btn-xs" data-del="' + p.id +
-              '" style="color:#f44336">Удалить</button>' +
-          '</td>';
-        tbody.appendChild(tr);
-      });
+      allProjects = list;
+      renderProjects(list);
+    });
+  }
 
-      tbody.querySelectorAll('button[data-del]').forEach(function (b) {
-        b.addEventListener('click', function () {
-          var id = parseInt(b.dataset.del, 10);
-          if (!confirm('Удалить проект #' + id + '?')) return;
-          API.del('/api/projects/' + id).then(loadProjects)
-            .catch(function (err) { alert(err.message); });
-        });
+  function renderProjects(list) {
+    var tbody = document.querySelector('#projectsTable tbody');
+    tbody.innerHTML = '';
+    if (!list.length) {
+      tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:20px;color:var(--text-dim)">Проектов не найдено</td></tr>';
+      return;
+    }
+    list.forEach(function (p) {
+      var tr = document.createElement('tr');
+      var ownerHtml = p.owner_name ? '<strong>' + esc(p.owner_name) + '</strong><br><span style="font-size:11px;color:var(--text-dim)">' + esc(p.owner_email) + '</span>' : '<span style="color:var(--text-dim)">Нет владельца</span>';
+      tr.innerHTML = '<td>' + p.id + '</td><td><strong>' + esc(p.name) + '</strong></td><td>' + ownerHtml + '</td><td>' + p.width_m + '×' + p.height_m + ' м</td><td>' + p.elements_count + '</td><td>' + p.aps_count + '</td><td>' + fmtDate(p.created_at) + '</td><td><button class="btn-xs" data-del="' + p.id + '" style="color:#f44336">Удалить</button></td>';
+      tbody.appendChild(tr);
+    });
+
+    tbody.querySelectorAll('button[data-del]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        var id = parseInt(b.dataset.del, 10);
+        if (!confirm('Удалить проект #' + id + '?')) return;
+        API.del('/api/projects/' + id).then(function () {
+          showToast('Проект удалён');
+          loadProjects();
+        }).catch(err => showToast(err.message, 'error'));
       });
     });
   }
@@ -279,42 +290,31 @@
       var tbody = document.querySelector('#auditTable tbody');
       tbody.innerHTML = '';
       if (!logs.length) {
-        tbody.innerHTML = '<tr><td colspan="5"><div class="empty">' +
-          '<div class="big">📜</div>Журнал пуст</div></td></tr>';
+        tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:20px;color:var(--text-dim)">Журнал пуст</td></tr>';
         return;
       }
       logs.forEach(function (l) {
         var tr = document.createElement('tr');
-        tr.innerHTML =
-          '<td>' + fmtDate(l.created_at) + '</td>' +
-          '<td>' + (l.user_name ? esc(l.user_name) : '—') +
-            '<br><span style="color:var(--text-muted);font-size:11px">' +
-            (l.user_email ? esc(l.user_email) : '') + '</span></td>' +
-          '<td><code>' + esc(l.action) + '</code></td>' +
-          '<td>' + (l.entity || '—') + '</td>' +
-          '<td>' + (l.entity_id || '—') + '</td>';
+        tr.innerHTML = '<td>' + fmtDate(l.created_at) + '</td><td>' + (l.user_name ? esc(l.user_name) : '—') + '<br><span style="font-size:11px;color:var(--text-dim)">' + (l.user_email ? esc(l.user_email) : '') + '</span></td><td><code>' + esc(l.action) + '</code></td><td>' + (l.entity || '—') + '</td><td>' + (l.entity_id || '—') + '</td>';
         tbody.appendChild(tr);
       });
-    }).catch(function (err) { console.error(err); });
+    }).catch(function (err) { showToast('Ошибка загрузки журнала', 'error'); });
   }
 
   // ============================================================
   // УТИЛИТЫ
   // ============================================================
+  function roleRu(role) { return { admin: 'Админ', engineer: 'Инженер', analyst: 'Аналитик' }[role] || role; }
+  
   function fmtDate(iso) {
     if (!iso) return '—';
     try {
       var d = new Date(iso);
       if (isNaN(d.getTime())) return iso;
       var pad = function (n) { return n < 10 ? '0' + n : n; };
-      return pad(d.getDate()) + '.' + pad(d.getMonth() + 1) + '.' +
-             d.getFullYear() + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+      return pad(d.getDate()) + '.' + pad(d.getMonth() + 1) + '.' + d.getFullYear() + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes());
     } catch (e) { return iso; }
   }
-
-  function esc(s) {
-    return String(s || '')
-      .replace(/&/g, '&amp;').replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-  }
+  
+  function esc(s) { return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
 })();

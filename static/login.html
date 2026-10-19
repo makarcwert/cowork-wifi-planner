@@ -7,10 +7,23 @@
 <link rel="icon" href="data:,">
 <link rel="stylesheet" href="/static/css/style.css">
 <script>
-  // Тема — сразу, чтобы не мигало
-  var t = localStorage.getItem('cw_theme') || 'dark';
-  document.documentElement.setAttribute('data-theme', t);
+  // Тема применяется сразу, чтобы не мигало при загрузке
+  (function () {
+    var t = localStorage.getItem('cw_theme') || 'dark';
+    document.documentElement.setAttribute('data-theme', t);
+  })();
 </script>
+<style>
+  /* Спиннер загрузки, пока идёт проверка токена */
+  .boot-spinner {
+    display: none;
+    text-align: center;
+    padding: 20px;
+    color: var(--text-dim);
+    font-size: 12px;
+  }
+  .boot-spinner.show { display: block; }
+</style>
 </head>
 <body class="auth-page">
 
@@ -19,29 +32,31 @@
   <h1>CoworkWiFi Planner</h1>
   <p class="subtitle">Программа проверки зоны покрытия Wi-Fi</p>
 
-  <form id="loginForm">
+  <!-- ==================== ФОРМА ВХОДА ==================== -->
+  <form id="loginForm" autocomplete="on">
     <label>Email
       <input type="email" id="email" required placeholder="admin@local" autocomplete="username">
     </label>
     <label>Пароль
       <input type="password" id="password" required placeholder="••••••" autocomplete="current-password">
     </label>
-    <button type="submit">Войти</button>
+    <button type="submit" id="loginSubmit">Войти</button>
   </form>
 
   <p class="hint">
     Нет аккаунта? <a href="#" id="showRegister">Зарегистрироваться</a>
   </p>
 
-  <form id="registerForm" style="display:none">
+  <!-- ==================== ФОРМА РЕГИСТРАЦИИ ==================== -->
+  <form id="registerForm" style="display:none" autocomplete="off">
     <label>ФИО
-      <input type="text" id="regName" required placeholder="Иван Иванов">
+      <input type="text" id="regName" required placeholder="Иван Иванов" autocomplete="name">
     </label>
     <label>Email
-      <input type="email" id="regEmail" required placeholder="user@example.com">
+      <input type="email" id="regEmail" required placeholder="user@example.com" autocomplete="email">
     </label>
     <label>Пароль
-      <input type="password" id="regPassword" required minlength="6" placeholder="минимум 6 символов">
+      <input type="password" id="regPassword" required minlength="6" placeholder="минимум 6 символов" autocomplete="new-password">
     </label>
     <label>Роль
       <select id="regRole">
@@ -50,62 +65,166 @@
         <option value="admin">Администратор</option>
       </select>
     </label>
-    <button type="submit">Создать аккаунт</button>
+    <button type="submit" id="registerSubmit">Создать аккаунт</button>
   </form>
 
+  <p class="hint" id="registerHint" style="display:none">
+    Есть аккаунт? <a href="#" id="showLogin">Войти</a>
+  </p>
+
   <div id="msg" class="msg"></div>
+
+  <!-- Спиннер проверки сессии -->
+  <div class="boot-spinner" id="bootSpinner">
+    Проверка сессии…
+  </div>
 </div>
 
-<script src="/static/js/api.js"></script>
-<script>
-(function () {
+<!-- Ленивая загрузка: api.js нужен для обеих форм -->
+<script src="/static/js/api.js" defer></script>
+
+<!-- Логика логина/регистрации — отдельный файл -->
+<script src="/static/js/auth.js" defer></script>
+
+<!-- Bootstrap-скрипт: проверяет токен, переключает формы, тему -->
+<script defer>
+document.addEventListener('DOMContentLoaded', function () {
+  'use strict';
+
   var loginForm = document.getElementById('loginForm');
   var registerForm = document.getElementById('registerForm');
+  var loginHint = document.querySelector('.hint:not(#registerHint)');
+  var registerHint = document.getElementById('registerHint');
   var msg = document.getElementById('msg');
+  var spinner = document.getElementById('bootSpinner');
+  var loginSubmit = document.getElementById('loginSubmit');
+  var registerSubmit = document.getElementById('registerSubmit');
+
+  // ---------------- Проверка уже существующей сессии ----------------
+  if (API.getToken()) {
+    spinner.classList.add('show');
+    loginForm.style.display = 'none';
+
+    API.get('/api/auth/me')
+      .then(function () {
+        window.location.href = '/static/index.html';
+      })
+      .catch(function () {
+        API.clearToken();
+        spinner.classList.remove('show');
+        loginForm.style.display = '';
+      });
+  }
+
+  // ---------------- Переключение форм ----------------
+  function showLogin() {
+    registerForm.style.display = 'none';
+    registerHint.style.display = 'none';
+    loginForm.style.display = '';
+    loginHint.style.display = '';
+    msg.classList.remove('show');
+    document.getElementById('email').focus();
+  }
+
+  function showRegister() {
+    loginForm.style.display = 'none';
+    loginHint.style.display = 'none';
+    registerForm.style.display = '';
+    registerHint.style.display = '';
+    msg.classList.remove('show');
+    document.getElementById('regName').focus();
+  }
 
   document.getElementById('showRegister').addEventListener('click', function (e) {
     e.preventDefault();
-    loginForm.style.display = 'none';
-    registerForm.style.display = 'block';
-    msg.classList.remove('show');
+    showRegister();
   });
 
+  document.getElementById('showLogin').addEventListener('click', function (e) {
+    e.preventDefault();
+    showLogin();
+  });
+
+  // ---------------- Обработка входа ----------------
   loginForm.addEventListener('submit', function (e) {
     e.preventDefault();
+
+    var email = document.getElementById('email').value.trim();
+    var password = document.getElementById('password').value;
+
+    if (!email || !password) {
+      showMsg('Заполните email и пароль', 'error');
+      return;
+    }
+
+    loginSubmit.disabled = true;
+    loginSubmit.textContent = 'Вход…';
+
     var form = new FormData();
-    form.append('username', document.getElementById('email').value);
-    form.append('password', document.getElementById('password').value);
+    form.append('username', email);
+    form.append('password', password);
+
     API.postForm('/api/auth/login', form)
       .then(function (data) {
         API.setToken(data.access_token);
         window.location.href = '/static/index.html';
       })
       .catch(function (err) {
-        msg.textContent = err.message;
-        msg.className = 'msg error show';
+        showMsg(err.message || 'Неверный email или пароль', 'error');
+      })
+      .finally(function () {
+        loginSubmit.disabled = false;
+        loginSubmit.textContent = 'Войти';
       });
   });
 
+  // ---------------- Обработка регистрации ----------------
   registerForm.addEventListener('submit', function (e) {
     e.preventDefault();
-    API.post('/api/auth/register', {
-      full_name: document.getElementById('regName').value,
-      email: document.getElementById('regEmail').value,
+
+    var data = {
+      full_name: document.getElementById('regName').value.trim(),
+      email: document.getElementById('regEmail').value.trim(),
       password: document.getElementById('regPassword').value,
-      role: document.getElementById('regRole').value
-    })
+      role: document.getElementById('regRole').value,
+    };
+
+    if (!data.full_name || !data.email || !data.password) {
+      showMsg('Заполните все поля', 'error');
+      return;
+    }
+    if (data.password.length < 6) {
+      showMsg('Пароль должен быть не короче 6 символов', 'error');
+      return;
+    }
+
+    registerSubmit.disabled = true;
+    registerSubmit.textContent = 'Создание…';
+
+    API.post('/api/auth/register', data)
       .then(function () {
-        msg.textContent = 'Аккаунт создан. Войдите.';
-        msg.className = 'msg success show';
-        registerForm.style.display = 'none';
-        loginForm.style.display = 'block';
+        showMsg('Аккаунт создан. Войдите.', 'success');
+        registerForm.reset();
+        setTimeout(showLogin, 800);
       })
       .catch(function (err) {
-        msg.textContent = err.message;
-        msg.className = 'msg error show';
+        showMsg(err.message || 'Ошибка регистрации', 'error');
+      })
+      .finally(function () {
+        registerSubmit.disabled = false;
+        registerSubmit.textContent = 'Создать аккаунт';
       });
   });
-})();
+
+  // ---------------- Вспомогательные ----------------
+  function showMsg(text, type) {
+    msg.textContent = text;
+    msg.className = 'msg ' + (type || 'error') + ' show';
+  }
+
+  // ---------------- Тема (переключатель не нужен на логине) ----------------
+  // Тема уже применена в <head>. Кнопки переключения здесь нет.
+});
 </script>
 </body>
 </html>
