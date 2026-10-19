@@ -1,393 +1,461 @@
 /* ============================================================
-   CoworkWiFi Planner — SVG-иконки в стиле технического чертежа
-   Флэт, тонкие линии, единый viewBox 32×32
+   CoworkWiFi Planner — SVG-иконки
+   Стиль: viewBox 100×100, stroke 5, currentColor
+   Адаптируются под тёмную/светлую тему автоматически
    ============================================================ */
 (function (global) {
   'use strict';
 
-  // Общие атрибуты для всех иконок
-  var S = 'xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none" ' +
-          'stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"';
-
-  // ============================================================
-  // СЕТЬ
-  // ============================================================
-
-  // Точка доступа — Wi-Fi круги
-  var ICON_AP =
-    '<svg ' + S + '>' +
-      '<circle cx="16" cy="16" r="2" fill="currentColor" stroke="none"/>' +
-      '<path d="M 11 11 a7 7 0 0 1 10 0"/>' +
-      '<path d="M 8 8 a11 11 0 0 1 16 0"/>' +
-      '<path d="M 13 13.5 a4 4 0 0 1 6 0"/>' +
-    '</svg>';
-
-  // Коммутатор — синий прямоугольник со стрелками
-  var ICON_SWITCH =
-    '<svg ' + S + '>' +
-      '<rect x="2" y="9" width="28" height="14" rx="2" fill="#2E5EAA" stroke="#1E4080"/>' +
-      '<path d="M 8 18 L 8 13 M 6 15 L 8 13 L 10 15" stroke="#fff"/>' +
-      '<path d="M 13 13 L 13 18 M 11 16 L 13 18 L 15 16" stroke="#fff"/>' +
-      '<circle cx="20" cy="16" r="1" fill="#fff" stroke="none"/>' +
-      '<circle cx="24" cy="16" r="1" fill="#fff" stroke="none"/>' +
-    '</svg>';
-
-  // Роутер — с антеннами
-  var ICON_ROUTER =
-    '<svg ' + S + '>' +
-      '<rect x="4" y="14" width="24" height="10" rx="2" fill="#fff"/>' +
-      '<line x1="8" y1="14" x2="8" y2="6"/>' +
-      '<line x1="16" y1="14" x2="16" y2="6"/>' +
-      '<line x1="24" y1="14" x2="24" y2="6"/>' +
-      '<circle cx="8" cy="6" r="1" fill="currentColor" stroke="none"/>' +
-      '<circle cx="16" cy="6" r="1" fill="currentColor" stroke="none"/>' +
-      '<circle cx="24" cy="6" r="1" fill="currentColor" stroke="none"/>' +
-      '<circle cx="9" cy="19" r="0.8" fill="currentColor" stroke="none"/>' +
-      '<circle cx="14" cy="19" r="0.8" fill="currentColor" stroke="none"/>' +
-      '<circle cx="19" cy="19" r="0.8" fill="currentColor" stroke="none"/>' +
-      '<circle cx="24" cy="19" r="0.8" fill="currentColor" stroke="none"/>' +
-    '</svg>';
-
-  // Патч-панель — рейка с портами
-  var ICON_PATCH =
-    '<svg ' + S + '>' +
-      '<rect x="3" y="12" width="26" height="8" rx="1" fill="#ddd"/>' +
-      '<rect x="5" y="14" width="2" height="4" fill="#2E5EAA" stroke="none"/>' +
-      '<rect x="9" y="14" width="2" height="4" fill="#2E5EAA" stroke="none"/>' +
-      '<rect x="13" y="14" width="2" height="4" fill="#2E5EAA" stroke="none"/>' +
-      '<rect x="17" y="14" width="2" height="4" fill="#2E5EAA" stroke="none"/>' +
-      '<rect x="21" y="14" width="2" height="4" fill="#2E5EAA" stroke="none"/>' +
-      '<rect x="25" y="14" width="2" height="4" fill="#2E5EAA" stroke="none"/>' +
-    '</svg>';
-
-  // WLC — контроллер
-  var ICON_WLC =
-    '<svg ' + S + '>' +
-      '<rect x="6" y="4" width="20" height="24" rx="2" fill="#fff"/>' +
-      '<line x1="6" y1="12" x2="26" y2="12"/>' +
-      '<line x1="6" y1="20" x2="26" y2="20"/>' +
-      '<circle cx="10" cy="8" r="1" fill="currentColor" stroke="none"/>' +
-      '<circle cx="10" cy="16" r="1" fill="currentColor" stroke="none"/>' +
-      '<circle cx="10" cy="24" r="1" fill="currentColor" stroke="none"/>' +
-      '<line x1="14" y1="8" x2="22" y2="8"/>' +
-      '<line x1="14" y1="16" x2="22" y2="16"/>' +
-      '<line x1="14" y1="24" x2="22" y2="24"/>' +
-    '</svg>';
-
-  // ============================================================
-  // СТЕНЫ (палитра)
-  // ============================================================
-
-  var ICON_WALL_BRICK =
-    '<svg ' + S + '>' +
-      '<rect x="2" y="9" width="28" height="14" fill="#B85C38" stroke="#8a3f22"/>' +
-      '<line x1="2" y1="14" x2="30" y2="14" stroke="#8a3f22"/>' +
-      '<line x1="2" y1="19" x2="30" y2="19" stroke="#8a3f22"/>' +
-      '<line x1="10" y1="9" x2="10" y2="14" stroke="#8a3f22"/>' +
-      '<line x1="21" y1="9" x2="21" y2="14" stroke="#8a3f22"/>' +
-      '<line x1="6" y1="14" x2="6" y2="19" stroke="#8a3f22"/>' +
-      '<line x1="16" y1="14" x2="16" y2="19" stroke="#8a3f22"/>' +
-      '<line x1="26" y1="14" x2="26" y2="19" stroke="#8a3f22"/>' +
-      '<line x1="10" y1="19" x2="10" y2="23" stroke="#8a3f22"/>' +
-      '<line x1="21" y1="19" x2="21" y2="23" stroke="#8a3f22"/>' +
-    '</svg>';
-
-  var ICON_WALL_WOOD =
-    '<svg ' + S + '>' +
-      '<rect x="2" y="9" width="28" height="14" fill="#A0522D" stroke="#7a3a20"/>' +
-      '<line x1="7" y1="9" x2="7" y2="23" stroke="#7a3a20"/>' +
-      '<line x1="12" y1="9" x2="12" y2="23" stroke="#7a3a20"/>' +
-      '<line x1="17" y1="9" x2="17" y2="23" stroke="#7a3a20"/>' +
-      '<line x1="22" y1="9" x2="22" y2="23" stroke="#7a3a20"/>' +
-      '<line x1="27" y1="9" x2="27" y2="23" stroke="#7a3a20"/>' +
-    '</svg>';
-
-  var ICON_WALL_GLASS =
-    '<svg ' + S + '>' +
-      '<rect x="2" y="10" width="28" height="12" fill="#A8D8EA" fill-opacity="0.4"/>' +
-      '<line x1="2" y1="10" x2="30" y2="10" stroke="#5BA8C8"/>' +
-      '<line x1="2" y1="22" x2="30" y2="22" stroke="#5BA8C8"/>' +
-      '<path d="M 5 22 L 11 10 L 15 10 L 9 22 Z" fill="#fff" fill-opacity="0.5" stroke="none"/>' +
-    '</svg>';
-
-  var ICON_WALL_DRYWALL =
-    '<svg ' + S + '>' +
-      '<rect x="2" y="10" width="28" height="12" fill="#E8E8E8"/>' +
-      '<line x1="2" y1="10" x2="30" y2="10"/>' +
-      '<line x1="2" y1="22" x2="30" y2="22"/>' +
-    '</svg>';
-
-  var ICON_WALL_CONCRETE =
-    '<svg ' + S + '>' +
-      '<rect x="2" y="10" width="28" height="12" fill="#7A7A7A"/>' +
-      '<circle cx="6" cy="14" r="0.7" fill="#fff" stroke="none"/>' +
-      '<circle cx="12" cy="13" r="0.7" fill="#fff" stroke="none"/>' +
-      '<circle cx="18" cy="15" r="0.7" fill="#fff" stroke="none"/>' +
-      '<circle cx="24" cy="14" r="0.7" fill="#fff" stroke="none"/>' +
-      '<circle cx="9" cy="18" r="0.7" fill="#fff" stroke="none"/>' +
-      '<circle cx="15" cy="19" r="0.7" fill="#fff" stroke="none"/>' +
-      '<circle cx="21" cy="18" r="0.7" fill="#fff" stroke="none"/>' +
-      '<circle cx="27" cy="19" r="0.7" fill="#fff" stroke="none"/>' +
-    '</svg>';
-
-  // ============================================================
-  // МЕБЕЛЬ
-  // ============================================================
-
-  var ICON_TABLE =
-    '<svg ' + S + '>' +
-      '<rect x="3" y="10" width="26" height="14" fill="#A0522D" stroke="#7a3a20"/>' +
-      '<line x1="3" y1="14" x2="29" y2="14" stroke="#7a3a20"/>' +
-      '<line x1="3" y1="18" x2="29" y2="18" stroke="#7a3a20"/>' +
-      '<line x1="3" y1="21" x2="29" y2="21" stroke="#7a3a20"/>' +
-    '</svg>';
-
-  var ICON_CHAIR =
-    '<svg ' + S + '>' +
-      '<path d="M 10 8 a5 5 0 0 1 12 0 v 8 h -12 z" fill="#ddd"/>' +
-      '<ellipse cx="16" cy="20" rx="7" ry="3" fill="#ddd"/>' +
-      '<line x1="11" y1="23" x2="11" y2="27"/>' +
-      '<line x1="21" y1="23" x2="21" y2="27"/>' +
-    '</svg>';
-
-  var ICON_SOFA =
-    '<svg ' + S + '>' +
-      '<rect x="3" y="13" width="26" height="10" rx="2" fill="#ddd"/>' +
-      '<rect x="3" y="9" width="4" height="6" rx="1" fill="#ccc"/>' +
-      '<rect x="25" y="9" width="4" height="6" rx="1" fill="#ccc"/>' +
-      '<line x1="7" y1="23" x2="7" y2="26"/>' +
-      '<line x1="25" y1="23" x2="25" y2="26"/>' +
-    '</svg>';
-
-  var ICON_PLANT =
-    '<svg ' + S + '>' +
-      '<path d="M 11 20 L 21 20 L 22 29 L 10 29 Z" fill="#c8a870" stroke="#8a6a40"/>' +
-      '<path d="M 16 20 Q 8 14 6 6 Q 14 10 16 20" fill="#2ECC71" stroke="#1f8f4e"/>' +
-      '<path d="M 16 20 Q 24 14 26 6 Q 18 10 16 20" fill="#2ECC71" stroke="#1f8f4e"/>' +
-      '<line x1="16" y1="20" x2="16" y2="5" stroke="#1f8f4e"/>' +
-    '</svg>';
-
-  // ============================================================
-  // ТЕХНИКА
-  // ============================================================
-
-  var ICON_PC =
-    '<svg ' + S + '>' +
-      '<rect x="4" y="6" width="17" height="13" rx="1" fill="#fff"/>' +
-      '<line x1="4" y1="16" x2="21" y2="16"/>' +
-      '<circle cx="12.5" cy="18" r="0.8" fill="currentColor" stroke="none"/>' +
-      '<line x1="10" y1="19" x2="15" y2="19"/>' +
-      '<line x1="12.5" y1="19" x2="12.5" y2="22"/>' +
-      '<line x1="9" y1="22" x2="16" y2="22"/>' +
-      '<rect x="24" y="10" width="5" height="12" rx="0.5" fill="#fff"/>' +
-      '<circle cx="26.5" cy="12" r="0.6" fill="currentColor" stroke="none"/>' +
-    '</svg>';
-
-  var ICON_LAPTOP =
-    '<svg ' + S + '>' +
-      '<rect x="6" y="7" width="20" height="14" rx="1" fill="#fff"/>' +
-      '<path d="M 3 22 L 29 22 L 27 25 L 5 25 Z" fill="#ddd"/>' +
-    '</svg>';
-
-  var ICON_PRINTER =
-    '<svg ' + S + '>' +
-      '<rect x="8" y="4" width="16" height="7" fill="#fff"/>' +
-      '<rect x="4" y="11" width="24" height="12" rx="1" fill="#fff"/>' +
-      '<rect x="8" y="18" width="16" height="8" fill="#fff"/>' +
-      '<line x1="6" y1="15" x2="10" y2="15" stroke="#2E5EAA" stroke-width="2"/>' +
-      '<circle cx="24" cy="15" r="0.8" fill="#2E5EAA" stroke="none"/>' +
-      '<line x1="11" y1="21" x2="21" y2="21"/>' +
-      '<line x1="11" y1="23" x2="21" y2="23"/>' +
-    '</svg>';
-
-  var ICON_SCANNER =
-    '<svg ' + S + '>' +
-      '<rect x="3" y="14" width="26" height="10" rx="1" fill="#fff"/>' +
-      '<line x1="3" y1="17" x2="29" y2="17"/>' +
-      '<rect x="7" y="6" width="18" height="6" fill="#ddd" stroke="none"/>' +
-      '<circle cx="24" cy="19" r="0.8" fill="currentColor" stroke="none"/>' +
-    '</svg>';
-
-  var ICON_CAMERA =
-    '<svg ' + S + '>' +
-      '<circle cx="16" cy="16" r="10" fill="#fff"/>' +
-      '<circle cx="16" cy="16" r="6" fill="#333"/>' +
-      '<circle cx="14" cy="14" r="1.5" fill="#fff" stroke="none"/>' +
-    '</svg>';
-
-  // ============================================================
-  // IoT (оранжевые)
-  // ============================================================
-
-  var ICON_LIGHT =
-    '<svg ' + S + ' stroke="#FF8C42">' +
-      '<circle cx="16" cy="16" r="4" fill="#FF8C42" fill-opacity="0.15"/>' +
-      '<line x1="16" y1="4" x2="16" y2="8"/>' +
-      '<line x1="16" y1="24" x2="16" y2="28"/>' +
-      '<line x1="4" y1="16" x2="8" y2="16"/>' +
-      '<line x1="24" y1="16" x2="28" y2="16"/>' +
-      '<line x1="8" y1="8" x2="11" y2="11"/>' +
-      '<line x1="24" y1="24" x2="21" y2="21"/>' +
-      '<line x1="8" y1="24" x2="11" y2="21"/>' +
-      '<line x1="24" y1="8" x2="21" y2="11"/>' +
-    '</svg>';
-
-  var ICON_SENSOR =
-    '<svg ' + S + ' stroke="#FF8C42">' +
-      '<rect x="12" y="4" width="8" height="24" rx="4" fill="#FFF3E8"/>' +
-      '<circle cx="16" cy="22" r="2.5" fill="#FF8C42" stroke="none"/>' +
-      '<line x1="16" y1="8" x2="16" y2="16"/>' +
-    '</svg>';
-
-  var ICON_LOCK =
-    '<svg ' + S + ' stroke="#FF8C42">' +
-      '<rect x="7" y="14" width="18" height="14" rx="2" fill="#FFF3E8"/>' +
-      '<path d="M 11 14 V 10 a5 5 0 0 1 10 0 V 14"/>' +
-      '<circle cx="16" cy="20" r="1.5" fill="#FF8C42" stroke="none"/>' +
-      '<line x1="16" y1="21" x2="16" y2="25"/>' +
-    '</svg>';
-
-  var ICON_DOORPHONE =
-    '<svg ' + S + ' stroke="#FF8C42">' +
-      '<rect x="10" y="4" width="12" height="24" rx="2" fill="#FFF3E8"/>' +
-      '<circle cx="16" cy="11" r="3" fill="#FF8C42" stroke="none"/>' +
-      '<circle cx="16" cy="20" r="1" fill="#FF8C42" stroke="none"/>' +
-      '<line x1="13" y1="24" x2="19" y2="24"/>' +
-    '</svg>';
-
-  var ICON_AC =
-    '<svg ' + S + ' stroke="#FF8C42">' +
-      '<rect x="3" y="9" width="26" height="12" rx="2" fill="#FFF3E8"/>' +
-      '<line x1="7" y1="13" x2="25" y2="13"/>' +
-      '<line x1="7" y1="16" x2="25" y2="16"/>' +
-      '<path d="M 8 25 q 3 -2 4 0 q 3 -2 4 0 q 3 -2 4 0 q 3 -2 4 0" fill="none"/>' +
-    '</svg>';
-
-  // ============================================================
-  // ПРОЧЕЕ
-  // ============================================================
-
-  var ICON_RJ45 =
-    '<svg ' + S + '>' +
-      '<rect x="8" y="8" width="16" height="16" rx="1" fill="#2E5EAA"/>' +
-      '<rect x="12" y="12" width="8" height="8" fill="#fff" stroke="none"/>' +
-    '</svg>';
-
-  var ICON_COVERAGE =
-    '<svg ' + S + '>' +
-      '<circle cx="16" cy="16" r="12" fill="none" stroke-dasharray="3 3"/>' +
-    '</svg>';
-
-  var ICON_CABLE =
-    '<svg ' + S + '>' +
-      '<path d="M 4 26 V 14 H 14 V 6 H 28"/>' +
-    '</svg>';
-
-  var ICON_SHAPE_RECT =
-    '<svg ' + S + '>' +
-      '<rect x="4" y="8" width="24" height="16" rx="1" fill="currentColor" opacity=".15"/>' +
-    '</svg>';
-
-  var ICON_SHAPE_ELLIPSE =
-    '<svg ' + S + '>' +
-      '<ellipse cx="16" cy="16" rx="12" ry="8" fill="currentColor" opacity=".15"/>' +
-    '</svg>';
-
-  var ICON_SHAPE_TRIANGLE =
-    '<svg ' + S + '>' +
-      '<polygon points="16,4 28,26 4,26" fill="currentColor" opacity=".15"/>' +
-    '</svg>';
-
-  // ============================================================
-  // РЕГИСТРАЦИЯ ИКОНОК
-  // ============================================================
-
   var ICONS = {
-    // Сеть
-    ap: ICON_AP,
-    switch: ICON_SWITCH,
-    router: ICON_ROUTER,
-    patch: ICON_PATCH,
-    wlc: ICON_WLC,
 
-    // Стены
-    wall_brick: ICON_WALL_BRICK,
-    wall_wood: ICON_WALL_WOOD,
-    wall_glass: ICON_WALL_GLASS,
-    wall_drywall: ICON_WALL_DRYWALL,
-    wall_concrete: ICON_WALL_CONCRETE,
+    // ============================================================
+    // СЕТЬ
+    // ============================================================
+    ap:
+      '<svg viewBox="0 0 100 100" fill="none" stroke="currentColor" stroke-width="5" stroke-linecap="round" stroke-linejoin="round">' +
+        '<rect x="10" y="60" width="80" height="20" rx="3"/>' +
+        '<line x1="22" y1="60" x2="22" y2="20"/>' +
+        '<line x1="42" y1="60" x2="42" y2="20"/>' +
+        '<circle cx="20" cy="70" r="1.5" fill="currentColor"/>' +
+        '<circle cx="30" cy="70" r="1.5" fill="currentColor"/>' +
+        '<circle cx="40" cy="70" r="1.5" fill="currentColor"/>' +
+        '<path d="M 55 35 A 15 15 0 0 1 65 50"/>' +
+        '<path d="M 50 40 A 22 22 0 0 1 65 55"/>' +
+        '<path d="M 45 45 A 30 30 0 0 1 65 60"/>' +
+      '</svg>',
 
-    // Мебель
-    table: ICON_TABLE,
-    chair: ICON_CHAIR,
-    sofa: ICON_SOFA,
-    plant: ICON_PLANT,
+    switch:
+      '<svg viewBox="0 0 100 100" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round">' +
+        '<rect x="10" y="15" width="80" height="12" rx="2"/>' +
+        '<rect x="10" y="35" width="80" height="12" rx="2"/>' +
+        '<rect x="10" y="55" width="80" height="12" rx="2"/>' +
+        '<rect x="10" y="75" width="80" height="12" rx="2"/>' +
+        '<g fill="currentColor" stroke="none">' +
+          '<circle cx="20" cy="30" r="2"/><circle cx="35" cy="30" r="2"/><circle cx="50" cy="30" r="2"/><circle cx="65" cy="30" r="2"/><circle cx="80" cy="30" r="2"/>' +
+          '<circle cx="20" cy="50" r="2"/><circle cx="35" cy="50" r="2"/><circle cx="50" cy="50" r="2"/><circle cx="65" cy="50" r="2"/><circle cx="80" cy="50" r="2"/>' +
+          '<circle cx="20" cy="70" r="2"/><circle cx="35" cy="70" r="2"/><circle cx="50" cy="70" r="2"/><circle cx="65" cy="70" r="2"/><circle cx="80" cy="70" r="2"/>' +
+        '</g>' +
+      '</svg>',
 
-    // Техника
-    pc: ICON_PC,
-    laptop: ICON_LAPTOP,
-    printer: ICON_PRINTER,
-    scanner: ICON_SCANNER,
-    camera: ICON_CAMERA,
+    router:
+      '<svg viewBox="0 0 100 100" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round">' +
+        '<rect x="10" y="15" width="80" height="25" rx="3"/>' +
+        '<line x1="25" y1="15" x2="25" y2="5"/>' +
+        '<line x1="75" y1="15" x2="75" y2="5"/>' +
+        '<circle cx="25" cy="5" r="2" fill="currentColor"/>' +
+        '<circle cx="75" cy="5" r="2" fill="currentColor"/>' +
+        '<g fill="currentColor" stroke="none">' +
+          '<circle cx="20" cy="27" r="2"/><circle cx="30" cy="27" r="2"/><circle cx="40" cy="27" r="2"/><circle cx="50" cy="27" r="2"/>' +
+        '</g>' +
+        '<path d="M 40 40 V 50 M 30 40 V 50 H 70 V 40"/>' +
+        '<rect x="10" y="55" width="25" height="20" rx="2"/>' +
+        '<rect x="60" y="55" width="30" height="20" rx="2"/>' +
+        '<line x1="50" y1="50" x2="50" y2="65"/>' +
+        '<circle cx="50" cy="65" r="3"/>' +
+        '<line x1="53" y1="65" x2="70" y2="55"/>' +
+        '<line x1="47" y1="65" x2="25" y2="55"/>' +
+      '</svg>',
 
+    wlc:
+      '<svg viewBox="0 0 100 100" fill="none" stroke="currentColor" stroke-width="5" stroke-linecap="round" stroke-linejoin="round">' +
+        '<path d="M 25 12 L 30 8 H 70 L 75 12 V 88 L 70 92 H 30 L 25 88 Z"/>' +
+        '<rect x="33" y="20" width="34" height="12" rx="1"/>' +
+        '<rect x="33" y="36" width="34" height="12" rx="1"/>' +
+        '<circle cx="50" cy="65" r="3" fill="currentColor"/>' +
+        '<circle cx="50" cy="78" r="3" fill="currentColor"/>' +
+      '</svg>',
+
+    patch:
+      '<svg viewBox="0 0 100 100" fill="none" stroke="currentColor" stroke-width="5" stroke-linecap="round" stroke-linejoin="round">' +
+        '<rect x="10" y="15" width="32" height="42"/>' +
+        '<rect x="17" y="22" width="18" height="28"/>' +
+        '<rect x="35" y="28" width="32" height="42"/>' +
+        '<rect x="42" y="35" width="18" height="28"/>' +
+        '<rect x="60" y="42" width="32" height="42"/>' +
+        '<rect x="67" y="49" width="18" height="28"/>' +
+      '</svg>',
+
+    // ============================================================
+    // СТЕНЫ И ПРОЁМЫ
+    // ============================================================
+    wall_brick:
+      '<svg viewBox="0 0 100 100" fill="none" stroke="currentColor" stroke-width="5" stroke-linejoin="round">' +
+        '<rect x="10" y="20" width="80" height="60"/>' +
+        '<line x1="10" y1="40" x2="90" y2="40"/>' +
+        '<line x1="10" y1="60" x2="90" y2="60"/>' +
+        '<line x1="35" y1="20" x2="35" y2="40"/>' +
+        '<line x1="65" y1="20" x2="65" y2="40"/>' +
+        '<line x1="25" y1="40" x2="25" y2="60"/>' +
+        '<line x1="50" y1="40" x2="50" y2="60"/>' +
+        '<line x1="75" y1="40" x2="75" y2="60"/>' +
+        '<line x1="35" y1="60" x2="35" y2="80"/>' +
+        '<line x1="65" y1="60" x2="65" y2="80"/>' +
+      '</svg>',
+
+    wall_wood:
+      '<svg viewBox="0 0 100 100" fill="none" stroke="currentColor" stroke-width="5" stroke-linecap="round" stroke-linejoin="round">' +
+        '<ellipse cx="50" cy="20" rx="20" ry="8"/>' +
+        '<path d="M 30 20 V 78 A 20 8 0 0 0 70 78 V 20"/>' +
+        '<ellipse cx="50" cy="20" rx="10" ry="4"/>' +
+        '<line x1="35" y1="40" x2="35" y2="50"/>' +
+        '<line x1="50" y1="55" x2="50" y2="65"/>' +
+      '</svg>',
+
+    wall_glass:
+      '<svg viewBox="0 0 100 100" fill="none" stroke="currentColor" stroke-width="5" stroke-linejoin="round">' +
+        '<rect x="15" y="10" width="70" height="80"/>' +
+        '<rect x="22" y="17" width="56" height="66"/>' +
+        '<line x1="50" y1="17" x2="50" y2="83"/>' +
+        '<line x1="22" y1="50" x2="78" y2="50"/>' +
+      '</svg>',
+
+    wall_drywall:
+      '<svg viewBox="0 0 100 100" fill="none" stroke="currentColor" stroke-width="5" stroke-linecap="round" stroke-linejoin="round">' +
+        '<rect x="15" y="15" width="70" height="10" rx="2"/>' +
+        '<path d="M 15 25 Q 22.5 35 30 25 Q 37.5 35 45 25 Q 52.5 35 60 25 Q 67.5 35 75 25 Q 82.5 35 85 25"/>' +
+        '<rect x="15" y="40" width="70" height="10" rx="2"/>' +
+        '<path d="M 15 50 Q 22.5 60 30 50 Q 37.5 60 45 50 Q 52.5 60 60 50 Q 67.5 60 75 50 Q 82.5 60 85 50"/>' +
+        '<rect x="15" y="65" width="70" height="10" rx="2"/>' +
+        '<path d="M 15 75 Q 22.5 85 30 75 Q 37.5 85 45 75 Q 52.5 85 60 75 Q 67.5 85 75 75 Q 82.5 85 85 75"/>' +
+      '</svg>',
+
+    wall_concrete:
+      '<svg viewBox="0 0 100 100" fill="none" stroke="currentColor" stroke-width="5" stroke-linecap="round" stroke-linejoin="round">' +
+        '<path d="M 15 45 L 25 35 H 75 L 85 45 V 85 H 15 Z"/>' +
+        '<line x1="30" y1="35" x2="30" y2="15"/>' +
+        '<line x1="50" y1="35" x2="50" y2="10"/>' +
+        '<line x1="70" y1="35" x2="70" y2="15"/>' +
+        '<line x1="20" y1="25" x2="80" y2="25"/>' +
+      '</svg>',
+
+    door:
+      '<svg viewBox="0 0 100 100" fill="none" stroke="currentColor" stroke-width="5" stroke-linejoin="round">' +
+        '<rect x="20" y="10" width="60" height="80"/>' +
+        '<rect x="26" y="16" width="48" height="68"/>' +
+        '<circle cx="65" cy="52" r="3" fill="currentColor"/>' +
+      '</svg>',
+
+    // ============================================================
+    // МЕБЕЛЬ
+    // ============================================================
+    table:
+      '<svg viewBox="0 0 100 100" fill="none" stroke="currentColor" stroke-width="5" stroke-linecap="round" stroke-linejoin="round">' +
+        '<path d="M 15 30 L 85 30 L 92 45 H 8 Z"/>' +
+        '<line x1="15" y1="45" x2="15" y2="88"/>' +
+        '<line x1="35" y1="45" x2="35" y2="88"/>' +
+        '<line x1="65" y1="45" x2="65" y2="88"/>' +
+        '<line x1="85" y1="45" x2="85" y2="88"/>' +
+      '</svg>',
+
+    chair:
+      '<svg viewBox="0 0 100 100" fill="none" stroke="currentColor" stroke-width="5" stroke-linecap="round" stroke-linejoin="round">' +
+        '<path d="M 30 15 H 70 L 68 45 H 32 Z"/>' +
+        '<line x1="38" y1="15" x2="40" y2="45"/>' +
+        '<line x1="50" y1="15" x2="50" y2="45"/>' +
+        '<line x1="62" y1="15" x2="60" y2="45"/>' +
+        '<rect x="22" y="45" width="56" height="8" rx="2"/>' +
+        '<line x1="25" y1="53" x2="25" y2="88"/>' +
+        '<line x1="75" y1="53" x2="75" y2="88"/>' +
+      '</svg>',
+
+    sofa:
+      '<svg viewBox="0 0 100 100" fill="none" stroke="currentColor" stroke-width="5" stroke-linecap="round" stroke-linejoin="round">' +
+        '<path d="M 22 40 V 30 A 10 10 0 0 1 32 20 H 68 A 10 10 0 0 1 78 30 V 40"/>' +
+        '<path d="M 10 50 A 10 10 0 0 1 25 50 V 65 H 75 V 50 A 10 10 0 0 1 90 50 V 80 H 10 Z"/>' +
+        '<line x1="20" y1="80" x2="20" y2="90"/>' +
+        '<line x1="80" y1="80" x2="80" y2="90"/>' +
+      '</svg>',
+
+    plant:
+      '<svg viewBox="0 0 100 100" fill="none" stroke="currentColor" stroke-width="5" stroke-linecap="round" stroke-linejoin="round">' +
+        '<path d="M 30 65 H 70 L 65 90 H 35 Z"/>' +
+        '<line x1="25" y1="65" x2="75" y2="65"/>' +
+        '<path d="M 50 65 V 45 Q 30 35 20 42 Q 25 55 50 50"/>' +
+        '<path d="M 50 55 Q 70 42 80 48 Q 75 60 50 55"/>' +
+        '<path d="M 50 45 V 30 Q 48 22 42 18"/>' +
+        '<path d="M 50 30 Q 55 20 62 18 Q 60 30 50 30"/>' +
+      '</svg>',
+
+    // ============================================================
+    // ТЕХНИКА
+    // ============================================================
+    pc:
+      '<svg viewBox="0 0 100 100" fill="none" stroke="currentColor" stroke-width="5" stroke-linecap="round" stroke-linejoin="round">' +
+        '<rect x="10" y="20" width="22" height="65" rx="2"/>' +
+        '<line x1="15" y1="28" x2="27" y2="28"/>' +
+        '<circle cx="21" cy="75" r="2.5" fill="currentColor"/>' +
+        '<rect x="38" y="20" width="55" height="40" rx="2"/>' +
+        '<rect x="43" y="25" width="45" height="30"/>' +
+        '<line x1="65" y1="60" x2="65" y2="68"/>' +
+        '<rect x="53" y="68" width="24" height="8" rx="2"/>' +
+      '</svg>',
+
+    laptop:
+      '<svg viewBox="0 0 100 100" fill="none" stroke="currentColor" stroke-width="5" stroke-linecap="round" stroke-linejoin="round">' +
+        '<rect x="20" y="20" width="60" height="42" rx="2"/>' +
+        '<rect x="26" y="26" width="48" height="30"/>' +
+        '<path d="M 8 72 L 92 72 L 88 82 H 12 Z"/>' +
+        '<rect x="42" y="67" width="16" height="3" fill="currentColor"/>' +
+      '</svg>',
+
+    printer:
+      '<svg viewBox="0 0 100 100" fill="none" stroke="currentColor" stroke-width="5" stroke-linecap="round" stroke-linejoin="round">' +
+        '<rect x="20" y="15" width="25" height="12" fill="currentColor"/>' +
+        '<line x1="35" y1="20" x2="85" y2="8" stroke-width="4"/>' +
+        '<rect x="12" y="35" width="76" height="30" rx="3"/>' +
+        '<circle cx="70" cy="45" r="3" fill="currentColor"/>' +
+        '<circle cx="80" cy="45" r="3" fill="currentColor"/>' +
+        '<rect x="25" y="65" width="50" height="22" rx="2" fill="currentColor"/>' +
+      '</svg>',
+
+    scanner:
+      '<svg viewBox="0 0 100 100" fill="none" stroke="currentColor" stroke-width="5" stroke-linecap="round" stroke-linejoin="round">' +
+        '<rect x="15" y="60" width="70" height="25" rx="3"/>' +
+        '<path d="M 15 60 L 50 20 L 65 20 L 35 60 Z"/>' +
+        '<circle cx="78" cy="73" r="2.5" fill="currentColor"/>' +
+        '<line x1="65" y1="60" x2="65" y2="85"/>' +
+      '</svg>',
+
+    camera:
+      '<svg viewBox="0 0 100 100" fill="none" stroke="currentColor" stroke-width="5" stroke-linecap="round" stroke-linejoin="round">' +
+        '<circle cx="45" cy="48" r="30"/>' +
+        '<circle cx="45" cy="48" r="12"/>' +
+        '<path d="M 72 32 A 35 35 0 0 1 72 64"/>' +
+        '<path d="M 65 75 L 85 85 L 85 75"/>' +
+      '</svg>',
+
+    // ============================================================
     // IoT
-    light: ICON_LIGHT,
-    sensor: ICON_SENSOR,
-    lock: ICON_LOCK,
-    doorphone: ICON_DOORPHONE,
-    ac: ICON_AC,
+    // ============================================================
+    light:
+      '<svg viewBox="0 0 100 100" fill="none" stroke="currentColor" stroke-width="5" stroke-linecap="round" stroke-linejoin="round">' +
+        '<path d="M 30 45 A 20 20 0 1 1 70 45 C 70 60 60 65 60 70 H 40 C 40 65 30 60 30 45 Z"/>' +
+        '<line x1="40" y1="78" x2="60" y2="78"/>' +
+        '<line x1="42" y1="86" x2="58" y2="86"/>' +
+        '<line x1="50" y1="10" x2="50" y2="20"/>' +
+        '<line x1="20" y1="30" x2="28" y2="36"/>' +
+        '<line x1="80" y1="30" x2="72" y2="36"/>' +
+        '<line x1="12" y1="55" x2="22" y2="55"/>' +
+        '<line x1="88" y1="55" x2="78" y2="55"/>' +
+      '</svg>',
 
-    // Прочее
-    rj45: ICON_RJ45,
-    coverage: ICON_COVERAGE,
-    cable: ICON_CABLE,
+    sensor:
+      '<svg viewBox="0 0 100 100" fill="none" stroke="currentColor" stroke-width="5" stroke-linecap="round" stroke-linejoin="round">' +
+        '<path d="M 10 50 H 25 L 32 20 L 42 80 L 50 40 L 55 50 H 60"/>' +
+        '<circle cx="68" cy="50" r="4" fill="currentColor"/>' +
+        '<path d="M 75 40 A 15 15 0 0 1 75 60"/>' +
+        '<path d="M 82 32 A 25 25 0 0 1 82 68"/>' +
+        '<path d="M 89 24 A 35 35 0 0 1 89 76"/>' +
+      '</svg>',
 
-    // Фигуры
-    shape_rect: ICON_SHAPE_RECT,
-    shape_ellipse: ICON_SHAPE_ELLIPSE,
-    shape_triangle: ICON_SHAPE_TRIANGLE,
+    lock:
+      '<svg viewBox="0 0 100 100" fill="none" stroke="currentColor" stroke-width="5" stroke-linecap="round" stroke-linejoin="round">' +
+        '<rect x="20" y="42" width="60" height="45" rx="6"/>' +
+        '<path d="M 30 42 V 28 A 20 20 0 0 1 70 28 V 42"/>' +
+        '<circle cx="50" cy="62" r="5" fill="currentColor"/>' +
+      '</svg>',
 
-    // Псевдонимы для удобства (совместимость со старым кодом)
-    iot: ICON_SENSOR
+    doorphone:
+      '<svg viewBox="0 0 100 100" fill="none" stroke="currentColor" stroke-width="5" stroke-linecap="round" stroke-linejoin="round">' +
+        '<path d="M 15 45 L 25 35 H 75 L 85 45 V 85 H 15 Z"/>' +
+        '<line x1="30" y1="35" x2="30" y2="10"/>' +
+        '<line x1="50" y1="35" x2="50" y2="10"/>' +
+        '<line x1="70" y1="35" x2="70" y2="10"/>' +
+        '<line x1="25" y1="20" x2="35" y2="20"/>' +
+        '<line x1="45" y1="20" x2="55" y2="20"/>' +
+        '<line x1="65" y1="20" x2="75" y2="20"/>' +
+      '</svg>',
+
+    ac:
+      '<svg viewBox="0 0 100 100" fill="none" stroke="currentColor" stroke-width="5" stroke-linecap="round" stroke-linejoin="round">' +
+        '<rect x="10" y="20" width="80" height="28" rx="4"/>' +
+        '<line x1="10" y1="42" x2="90" y2="42"/>' +
+        '<path d="M 75 28 V 38 M 70 33 H 80 M 71 29 L 79 37 M 71 37 L 79 29" stroke-width="2"/>' +
+        '<g fill="currentColor" stroke="none">' +
+          '<circle cx="20" cy="58" r="2.5"/><circle cx="35" cy="58" r="2.5"/><circle cx="50" cy="58" r="2.5"/><circle cx="65" cy="58" r="2.5"/><circle cx="80" cy="58" r="2.5"/>' +
+          '<circle cx="20" cy="73" r="2.5"/><circle cx="35" cy="73" r="2.5"/><circle cx="50" cy="73" r="2.5"/><circle cx="65" cy="73" r="2.5"/><circle cx="80" cy="73" r="2.5"/>' +
+          '<circle cx="20" cy="88" r="2.5"/><circle cx="35" cy="88" r="2.5"/><circle cx="50" cy="88" r="2.5"/><circle cx="65" cy="88" r="2.5"/><circle cx="80" cy="88" r="2.5"/>' +
+        '</g>' +
+      '</svg>',
+
+    // ============================================================
+    // UI (метрики, экспорт)
+    // ============================================================
+    sun:
+      '<svg viewBox="0 0 100 100" fill="none" stroke="currentColor" stroke-width="5" stroke-linecap="round">' +
+        '<circle cx="50" cy="50" r="18"/>' +
+        '<line x1="50" y1="15" x2="50" y2="25"/>' +
+        '<line x1="50" y1="75" x2="50" y2="85"/>' +
+        '<line x1="15" y1="50" x2="25" y2="50"/>' +
+        '<line x1="75" y1="50" x2="85" y2="50"/>' +
+        '<line x1="25" y1="25" x2="32" y2="32"/>' +
+        '<line x1="75" y1="75" x2="68" y2="68"/>' +
+        '<line x1="25" y1="75" x2="32" y2="68"/>' +
+        '<line x1="75" y1="25" x2="68" y2="32"/>' +
+      '</svg>',
+
+    moon:
+      '<svg viewBox="0 0 100 100" fill="currentColor" stroke="none">' +
+        '<path d="M 60 20 A 35 35 0 1 0 85 70 A 25 25 0 1 1 60 20 Z"/>' +
+      '</svg>',
+
+    lightning:
+      '<svg viewBox="0 0 100 100" fill="none" stroke="currentColor" stroke-width="5" stroke-linecap="round" stroke-linejoin="round">' +
+        '<path d="M 58 15 L 32 48 L 52 48 L 42 85 L 70 47 L 50 47 Z"/>' +
+      '</svg>',
+
+    target:
+      '<svg viewBox="0 0 100 100" fill="none" stroke="currentColor" stroke-width="5" stroke-linejoin="round">' +
+        '<rect x="10" y="10" width="80" height="80" rx="8"/>' +
+        '<circle cx="50" cy="50" r="28"/>' +
+        '<circle cx="50" cy="50" r="16"/>' +
+        '<circle cx="50" cy="50" r="5" fill="currentColor"/>' +
+      '</svg>',
+
+    chart:
+      '<svg viewBox="0 0 100 100" fill="none" stroke="currentColor" stroke-width="5" stroke-linecap="round" stroke-linejoin="round">' +
+        '<rect x="15" y="20" width="70" height="50"/>' +
+        '<path d="M 25 55 L 40 40 L 55 55 L 75 35"/>' +
+        '<circle cx="25" cy="55" r="2.5" fill="currentColor"/>' +
+        '<circle cx="40" cy="40" r="2.5" fill="currentColor"/>' +
+        '<circle cx="55" cy="55" r="2.5" fill="currentColor"/>' +
+        '<circle cx="75" cy="35" r="2.5" fill="currentColor"/>' +
+        '<line x1="50" y1="70" x2="50" y2="85"/>' +
+        '<line x1="35" y1="85" x2="65" y2="85"/>' +
+      '</svg>',
+
+    xlsx:
+      '<svg viewBox="0 0 100 100" fill="none" stroke="currentColor" stroke-width="5" stroke-linejoin="round">' +
+        '<path d="M 25 12 H 70 L 82 25 V 88 H 25 Z"/>' +
+        '<path d="M 70 12 V 25 H 82"/>' +
+        '<line x1="32" y1="22" x2="32" y2="78" stroke-dasharray="2 4" stroke-width="3"/>' +
+        '<text x="58" y="58" font-family="Arial, sans-serif" font-size="14" font-weight="bold" text-anchor="middle" fill="currentColor" stroke="none">XLSX</text>' +
+      '</svg>',
+
+    csv:
+      '<svg viewBox="0 0 100 100" fill="none" stroke="currentColor" stroke-width="5" stroke-linejoin="round">' +
+        '<path d="M 25 12 H 70 L 82 25 V 88 H 25 Z"/>' +
+        '<path d="M 70 12 V 25 H 82"/>' +
+        '<text x="53" y="58" font-family="Arial, sans-serif" font-size="16" font-weight="bold" text-anchor="middle" fill="currentColor" stroke="none">CSV</text>' +
+      '</svg>',
+
+    png:
+      '<svg viewBox="0 0 100 100" fill="none" stroke="currentColor" stroke-width="5" stroke-linejoin="round">' +
+        '<path d="M 25 12 H 70 L 82 25 V 88 H 25 Z"/>' +
+        '<path d="M 70 12 V 25 H 82"/>' +
+        '<text x="53" y="58" font-family="Arial, sans-serif" font-size="16" font-weight="bold" text-anchor="middle" fill="currentColor" stroke="none">PNG</text>' +
+      '</svg>',
+
+    // ============================================================
+    // ДОПОЛНИТЕЛЬНЫЕ (не в палитре, но в наборе)
+    // ============================================================
+    camera_dome:
+      '<svg viewBox="0 0 100 100" fill="none" stroke="currentColor" stroke-width="5" stroke-linecap="round" stroke-linejoin="round">' +
+        '<path d="M 22 28 L 78 15 L 80 27 L 24 33 Z"/>' +
+        '<line x1="50" y1="33" x2="50" y2="42"/>' +
+        '<path d="M 15 55 Q 15 30 50 30 Q 85 30 85 55"/>' +
+        '<path d="M 15 55 V 75 Q 15 90 50 90 Q 85 90 85 75 V 55"/>' +
+        '<circle cx="50" cy="70" r="11"/>' +
+      '</svg>',
+
+    video:
+      '<svg viewBox="0 0 100 100" fill="none" stroke="currentColor" stroke-width="5" stroke-linecap="round" stroke-linejoin="round">' +
+        '<rect x="15" y="15" width="60" height="70"/>' +
+        '<rect x="15" y="15" width="10" height="10" fill="currentColor"/>' +
+        '<rect x="15" y="35" width="10" height="10" fill="currentColor"/>' +
+        '<rect x="15" y="55" width="10" height="10" fill="currentColor"/>' +
+        '<rect x="15" y="75" width="10" height="10" fill="currentColor"/>' +
+        '<rect x="65" y="15" width="10" height="10" fill="currentColor"/>' +
+        '<rect x="65" y="35" width="10" height="10" fill="currentColor"/>' +
+        '<rect x="65" y="55" width="10" height="10" fill="currentColor"/>' +
+        '<path d="M 60 65 L 65 55 L 70 65 L 80 70 L 70 75 L 65 85 L 60 75 L 50 70 Z" fill="currentColor"/>' +
+      '</svg>',
+
+    calendar:
+      '<svg viewBox="0 0 100 100" fill="none" stroke="currentColor" stroke-width="5" stroke-linejoin="round">' +
+        '<rect x="15" y="15" width="70" height="70"/>' +
+        '<line x1="15" y1="32" x2="85" y2="32"/>' +
+        '<line x1="32" y1="15" x2="32" y2="85"/>' +
+        '<line x1="50" y1="15" x2="50" y2="85"/>' +
+        '<line x1="68" y1="15" x2="68" y2="85"/>' +
+        '<line x1="15" y1="50" x2="85" y2="50"/>' +
+        '<line x1="15" y1="68" x2="85" y2="68"/>' +
+        '<g fill="currentColor" stroke="none">' +
+          '<circle cx="23" cy="23" r="2.5"/><circle cx="41" cy="23" r="2.5"/><circle cx="59" cy="23" r="2.5"/><circle cx="77" cy="23" r="2.5"/>' +
+          '<circle cx="23" cy="41" r="2.5"/><circle cx="23" cy="59" r="2.5"/><circle cx="23" cy="77" r="2.5"/>' +
+        '</g>' +
+      '</svg>',
+
+    analyst:
+      '<svg viewBox="0 0 100 100" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round">' +
+        '<circle cx="50" cy="20" r="9"/>' +
+        '<path d="M 50 30 V 50 L 25 45 L 20 55 M 50 50 L 75 45 L 80 55"/>' +
+        '<line x1="35" y1="65" x2="35" y2="88"/>' +
+        '<line x1="65" y1="65" x2="65" y2="88"/>' +
+        '<path d="M 35 55 V 65 H 65 V 55"/>' +
+        '<path d="M 15 40 L 22 22 L 28 40 Z"/>' +
+        '<rect x="76" y="32" width="14" height="14"/>' +
+      '</svg>',
+
+    spinner:
+      '<svg viewBox="0 0 100 100" fill="none" stroke="currentColor" stroke-width="4">' +
+        '<circle cx="30" cy="30" r="8"/>' +
+        '<circle cx="50" cy="20" r="10"/>' +
+        '<circle cx="70" cy="35" r="4" fill="currentColor"/>' +
+        '<circle cx="80" cy="55" r="5" fill="currentColor"/>' +
+        '<circle cx="70" cy="75" r="6"/>' +
+        '<circle cx="50" cy="85" r="7"/>' +
+        '<circle cx="30" cy="75" r="8"/>' +
+        '<circle cx="20" cy="55" r="9"/>' +
+      '</svg>',
+
+    team:
+      '<svg viewBox="0 0 100 100" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round">' +
+        '<circle cx="25" cy="28" r="8"/>' +
+        '<rect x="15" y="40" width="20" height="25"/>' +
+        '<line x1="20" y1="65" x2="20" y2="88"/>' +
+        '<line x1="30" y1="65" x2="30" y2="88"/>' +
+        '<circle cx="50" cy="26" r="9"/>' +
+        '<rect x="40" y="40" width="20" height="25"/>' +
+        '<line x1="45" y1="65" x2="45" y2="88"/>' +
+        '<line x1="55" y1="65" x2="55" y2="88"/>' +
+        '<circle cx="75" cy="24" r="10"/>' +
+        '<rect x="63" y="38" width="24" height="27"/>' +
+        '<line x1="70" y1="65" x2="70" y2="88"/>' +
+        '<line x1="80" y1="65" x2="80" y2="88"/>' +
+        '<path d="M 68 50 L 73 55 L 82 42" stroke-width="3"/>' +
+      '</svg>',
+
+    barcode:
+      '<svg viewBox="0 0 100 100" fill="none" stroke="currentColor" stroke-width="5" stroke-linecap="round" stroke-linejoin="round">' +
+        '<rect x="12" y="15" width="76" height="70" rx="8"/>' +
+        '<line x1="22" y1="30" x2="22" y2="58"/>' +
+        '<line x1="32" y1="25" x2="32" y2="58"/>' +
+        '<line x1="42" y1="20" x2="42" y2="58"/>' +
+        '<line x1="52" y1="25" x2="52" y2="58"/>' +
+        '<line x1="62" y1="30" x2="62" y2="58"/>' +
+        '<line x1="72" y1="25" x2="72" y2="58"/>' +
+        '<path d="M 25 70 Q 50 85 75 70"/>' +
+      '</svg>'
   };
 
   // ============================================================
   // ПУБЛИЧНОЕ API
   // ============================================================
+  var FALLBACK =
+    '<svg viewBox="0 0 100 100" fill="none" stroke="currentColor" stroke-width="5" stroke-linecap="round" stroke-linejoin="round">' +
+      '<circle cx="50" cy="50" r="30" stroke-dasharray="5 5"/>' +
+    '</svg>';
 
-  // Получить SVG-иконку по ключу
   global.getEditorIcon = function (kind) {
-    return ICONS[kind] ||
-      '<svg ' + S + '><circle cx="16" cy="16" r="8"/></svg>';
+    return ICONS[kind] || FALLBACK;
   };
 
-  // Прямой доступ ко всем иконкам
   global.EditorIcons = ICONS;
 
-  // Список для легенды: [ключ, отображаемое имя]
-  global.EditorLegendList = [
-    ['ap', 'Точка доступа'],
-    ['switch', 'Коммутатор'],
-    ['router', 'Роутер'],
-    ['patch', 'Патч-панель'],
-    ['wlc', 'WLC'],
-    ['pc', 'ПК'],
-    ['laptop', 'Ноутбук'],
-    ['printer', 'МФУ'],
-    ['scanner', 'Сканер'],
-    ['camera', 'Камера'],
-    ['table', 'Стол'],
-    ['chair', 'Стул'],
-    ['sofa', 'Диван'],
-    ['plant', 'Растение'],
-    ['light', 'Освещение'],
-    ['sensor', 'Датчик'],
-    ['lock', 'Умный замок'],
-    ['doorphone', 'Домофон'],
-    ['ac', 'Кондиционер'],
-    ['rj45', 'RJ-45'],
-    ['coverage', 'Покрытие'],
-    ['cable', 'Кабель']
-  ];
+  // Все иконки на месте, заглушек больше нет
+  global.MISSING_ICONS = [];
+
+  console.log('[icons.js] успешно загружено иконок:', Object.keys(ICONS).length);
 
 })(window);

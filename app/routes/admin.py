@@ -1,20 +1,19 @@
-"""Панель администратора: метрики, проекты, аудит (без авторизации)."""
+"""Панель администратора: метрики, проекты, аудит."""
 from datetime import datetime, timedelta
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
 from ..database import get_db
-from ..models import (
-    User, Project, PlanElement, ClientDevice, AccessPoint, AuditLog,
-)
+from ..models import User, Project, PlanElement, ClientDevice, AccessPoint, AuditLog
+from ..deps import require_role
 
 router = APIRouter()
 
-
+# Закрываем ВЕСЬ роутер только для админов
 @router.get("/metrics")
-def get_metrics(db: Session = Depends(get_db)):
+def get_metrics(db: Session = Depends(get_db), admin: User = Depends(require_role("admin"))):
     today = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
-
+    
     total_users = db.query(User).count()
     active_users = db.query(User).filter(User.is_active == True).count()
     admins = db.query(User).filter(User.role == "admin").count()
@@ -24,6 +23,8 @@ def get_metrics(db: Session = Depends(get_db)):
 
     total_projects = db.query(Project).count()
     projects_today = db.query(Project).filter(Project.created_at >= today).count()
+    
+    total_area = sum(p.width_m * p.height_m for p in db.query(Project).all())
 
     total_elements = db.query(PlanElement).count()
     total_devices = db.query(ClientDevice).count()
@@ -31,29 +32,14 @@ def get_metrics(db: Session = Depends(get_db)):
 
     regs_7d, projects_7d = [], []
     for i in range(6, -1, -1):
-        d0 = (datetime.utcnow() - timedelta(days=i)).replace(
-            hour=0, minute=0, second=0, microsecond=0)
+        d0 = (datetime.utcnow() - timedelta(days=i)).replace(hour=0, minute=0, second=0, microsecond=0)
         d1 = d0 + timedelta(days=1)
-        regs_7d.append({
-            "label": d0.strftime("%d.%m"),
-            "count": db.query(User).filter(
-                User.created_at >= d0, User.created_at < d1).count(),
-        })
-        projects_7d.append({
-            "label": d0.strftime("%d.%m"),
-            "count": db.query(Project).filter(
-                Project.created_at >= d0, Project.created_at < d1).count(),
-        })
+        regs_7d.append({"label": d0.strftime("%d.%m"), "count": db.query(User).filter(User.created_at >= d0, User.created_at < d1).count()})
+        projects_7d.append({"label": d0.strftime("%d.%m"), "count": db.query(Project).filter(Project.created_at >= d0, Project.created_at < d1).count()})
 
     return {
-        "users": {
-            "total": total_users,
-            "active": active_users,
-            "by_role": {"admin": admins, "engineer": engineers,
-                        "analyst": analysts},
-            "new_today": new_today,
-        },
-        "projects": {"total": total_projects, "today": projects_today},
+        "users": {"total": total_users, "active": active_users, "by_role": {"admin": admins, "engineer": engineers, "analyst": analysts}, "new_today": new_today},
+        "projects": {"total": total_projects, "today": projects_today, "total_area": round(total_area, 1)},
         "elements": {"total": total_elements},
         "devices": {"total": total_devices},
         "aps": {"total": total_aps},
@@ -61,9 +47,8 @@ def get_metrics(db: Session = Depends(get_db)):
         "projects_7d": projects_7d,
     }
 
-
 @router.get("/projects")
-def list_all_projects(db: Session = Depends(get_db)):
+def list_all_projects(db: Session = Depends(get_db), admin: User = Depends(require_role("admin"))):
     projects = db.query(Project).order_by(Project.id.desc()).all()
     result = []
     for p in projects:
@@ -75,18 +60,14 @@ def list_all_projects(db: Session = Depends(get_db)):
             "owner_id": p.owner_id,
             "owner_email": owner.email if owner else None,
             "owner_name": owner.full_name if owner else None,
-            "elements_count": db.query(PlanElement).filter(
-                PlanElement.project_id == p.id).count(),
-            "devices_count": db.query(ClientDevice).filter(
-                ClientDevice.project_id == p.id).count(),
-            "aps_count": db.query(AccessPoint).filter(
-                AccessPoint.project_id == p.id).count(),
+            "elements_count": db.query(PlanElement).filter(PlanElement.project_id == p.id).count(),
+            "devices_count": db.query(ClientDevice).filter(ClientDevice.project_id == p.id).count(),
+            "aps_count": db.query(AccessPoint).filter(AccessPoint.project_id == p.id).count(),
         })
     return result
 
-
 @router.get("/audit-log")
-def get_audit_log(limit: int = 100, db: Session = Depends(get_db)):
+def get_audit_log(limit: int = 100, db: Session = Depends(get_db), admin: User = Depends(require_role("admin"))):
     logs = db.query(AuditLog).order_by(AuditLog.id.desc()).limit(limit).all()
     result = []
     for log in logs:

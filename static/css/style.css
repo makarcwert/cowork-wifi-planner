@@ -264,11 +264,19 @@ h3 { font-size:14px; margin-bottom:10px; font-weight:600; }
 .empty .big { font-size:36px; opacity:.4; margin-bottom:8px; }
 
 /* ============ Футер ============ */
-.drawing-footer { display:flex; justify-content:space-between;
-  padding:8px 16px; border-top:1px solid var(--border);
-  background:var(--panel); font-size:10px; color:var(--text-dim);
-  text-transform:uppercase; letter-spacing:.5px; margin-top:40px; }
-
+.drawing-footer {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 6px 16px;
+  border-top: 1px solid var(--border);
+  background: var(--panel);
+  font-size: 10px;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: .5px;
+  flex-shrink: 0;
+}
 /* ============ Скроллбар ============ */
 ::-webkit-scrollbar { width:8px; height:8px; }
 ::-webkit-scrollbar-track { background:var(--panel); }
@@ -278,4 +286,60 @@ h3 { font-size:14px; margin-bottom:10px; font-weight:600; }
 @media (max-width: 700px) {
   .chart-row { grid-template-columns:1fr; }
   .hero h1 { font-size:24px; }
+}
+/* ============================================================
+   Sticky footer — прижимает .drawing-footer к низу страницы
+   Работает на страницах: index, measurements, admin
+   Не затрагивает editor (footer внутри .editor-shell)
+   Не затрагивает login (нет .drawing-footer)
+   ============================================================ */
+body:has(> .drawing-footer) {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+body:has(> .drawing-footer) > main {
+  flex: 1;
+}
+body > .drawing-footer {
+  margin-top: auto;
+  justify-content: center;
+  text-align: center;
+}
+/* ============================================================
+   Универсальная кнопка-крестик (закрытие)
+   ============================================================ */
+.btn-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+  transition: color .15s, background .15s;
+  flex-shrink: 0;
+}
+.btn-close:hover {
+  color: var(--red);
+  background: rgba(244, 67, 54, 0.1);
+}
+.btn-close svg {
+  width: 16px;
+  height: 16px;
+  pointer-events: none;
+}
+
+/* Для крупных крестиков в модалках (в правом верхнем углу) */
+.modal-close-top {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 10;
+}
+.modal-close-top svg {
+  width: 20px;
+  height: 20px;
 }

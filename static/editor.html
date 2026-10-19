@@ -13,16 +13,19 @@
 <div class="editor-shell">
 
   <!-- ВЕРХНИЙ ТУЛБАР -->
-  <div class="topbar-drawing">
+  <header class="topbar-drawing">
     <div class="topbar-left">
-      <span class="brand">📡 CoworkWiFi Planner</span>
-      <a class="brand" href="/static/index.html" style="color:var(--text-dim);font-weight:400;font-size:12px;text-decoration:none;margin-left:8px">Главная</a>
-      <a class="brand" href="/static/measurements.html" style="color:var(--text-dim);font-weight:400;font-size:12px;text-decoration:none">Измерения</a>
-      <a class="brand" id="adminLink" href="/static/admin.html" style="color:var(--text-dim);font-weight:400;font-size:12px;text-decoration:none;display:none">Админ</a>
+      <a class="brand-link" href="/static/index.html">📡 CoworkWiFi Planner</a>
+      <a class="menu-item" href="/static/index.html">Главная</a>
+      <a class="menu-item active" href="/static/editor.html">Редактор</a>
+      <a class="menu-item" href="/static/measurements.html">Измерения</a>
+      <a class="menu-item" id="adminLink" href="/static/admin.html" style="display:none">Админ</a>
     </div>
+
     <div class="spacer"></div>
+
     <div class="topbar-right">
-      <select id="projectSelect" class="palette-search" style="min-width:180px;font-size:11px;padding:4px 6px">
+      <select id="projectSelect" class="palette-search" style="min-width:160px;font-size:11px;padding:4px 6px">
         <option value="">— Проект —</option>
       </select>
       <span class="sep">│</span>
@@ -33,58 +36,89 @@
       <span class="zoom-label" id="zoomLabel">100%</span>
       <button class="btn-icon" id="zoomIn" title="Увеличить">+</button>
       <span class="sep">│</span>
-      <button class="btn-icon" id="themeToggle" title="Тема">☀</button>
       <button class="btn-primary-sm" id="newProjectBtn">+ Новый проект</button>
-      <div class="avatar" id="userAvatar" title="Аккаунт" style="width:26px;height:26px;border-radius:50%;background:var(--accent);color:#fff;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;margin-left:6px">?</div>
+      <span class="sep">│</span>
+      <button class="btn-icon" id="themeToggle" title="Тема" data-icon="sun"></button>
+      <div class="avatar" id="userAvatar" title="Аккаунт">?</div>
+      <span class="brand" id="userName" style="font-size:12px;font-weight:400;color:var(--text-dim)"></span>
       <button class="btn-icon" id="logoutBtn" title="Выйти">⏻</button>
     </div>
-  </div>
+  </header>
 
   <div class="drawing-layout">
 
-    <!-- ЛЕВЫЙ ТУЛБАР -->
-    <aside class="tools-bar">
-      <button class="tool-btn active" data-tool="select" title="Выделение (V)">🖱</button>
-      <button class="tool-btn" data-tool="wall" title="Стена (W)">🧱</button>
-      <button class="tool-btn" data-tool="room" title="Комната">⬛</button>
-      <button class="tool-btn" data-tool="door" title="Дверь">🚪</button>
-      <button class="tool-btn" data-tool="text" title="Текст (T)">🅰</button>
-      <div class="tool-divider"></div>
-      <button class="tool-btn" id="btnRssi" title="Карта RSSI">🌊</button>
-      <button class="tool-btn" id="btnSnr" title="Карта SNR">📶</button>
-      <button class="tool-btn" id="btnInterf" title="Карта интерференции">🎯</button>
-      <button class="tool-btn" id="btnLoad" title="Расчёт нагрузки">📊</button>
-      <button class="tool-btn" id="btnAutoPlace" title="Авто-расстановка AP">🤖</button>
-      <div class="tool-divider"></div>
-      <button class="tool-btn" id="btnSave" title="Сохранить PNG">💾</button>
-      <button class="tool-btn" id="btnCsv" title="Экспорт CSV">📄</button>
-      <button class="tool-btn" id="btnPdf" title="Отчёт PDF">📕</button>
-      <button class="tool-btn" id="btnXlsx" title="Экспорт XLSX">📊</button>
-      <div class="tool-divider"></div>
-      <button class="tool-btn" id="btnAutoFill" title="Автозамеры 4×4">🔳</button>
-      <button class="tool-btn" id="btnPlanFact" title="Сравнение план/факт">📐</button>
-      <button class="tool-btn" id="btn3D" title="3D-визуализация покрытия">🌐</button>
-    </aside>
+    <!-- ЕДИНАЯ ЛЕВАЯ ПАЛИТРА -->
+    <aside class="palette-bar palette-bar-wide">
 
-    <!-- ПАЛИТРА -->
-    <aside class="palette-bar">
       <div class="palette-header">
         <span>Элементы</span>
         <input id="paletteSearch" placeholder="Поиск..." class="palette-search">
       </div>
+
+      <div class="tool-strip">
+        <button class="tool-btn active" data-tool="select" title="Выделение (V)">🖱</button>
+        <button class="tool-btn" data-tool="wall" title="Стена (W)" data-icon="wall_brick"></button>
+        <button class="tool-btn" data-tool="room" title="Комната">⬛</button>
+        <button class="tool-btn" data-tool="door" title="Дверь" data-icon="door"></button>
+        <button class="tool-btn" data-tool="text" title="Текст (T)">🅰</button>
+      </div>
+
+      <!-- Категории элементов (заполняется в editor.js) -->
       <div class="palette-groups" id="paletteGroups"></div>
+
+      <!-- Секции действий -->
       <div class="palette-footer">
-        <button class="btn-block" id="btnSpec">📋 Спецификация</button>
-        <button class="btn-block" id="btnStats">📊 Статистика</button>
-        <button class="btn-block" id="btnPoe">⚡ PoE-бюджет</button>
+
+        <details class="palette-actions" open>
+          <summary>Расчёты</summary>
+          <button class="btn-block" onclick="document.getElementById('btnAutoPlace').click()" data-icon="target" data-label="Авто-расстановка AP"></button>
+          <button class="btn-block" onclick="document.getElementById('btnLoad').click()" data-icon="chart" data-label="Расчёт нагрузки"></button>
+          <button class="btn-block" onclick="document.getElementById('btnAutoFill').click()" data-icon="calendar" data-label="Автозамеры 4×4"></button>
+          <button class="btn-block" onclick="document.getElementById('btnPlanFact').click()" data-icon="analyst" data-label="Сравнение план/факт"></button>
+        </details>
+
+        <details class="palette-actions">
+          <summary>Экспорт</summary>
+          <button class="btn-block" onclick="document.getElementById('btnSave').click()" data-icon="png" data-label="Сохранить PNG"></button>
+          <button class="btn-block" onclick="document.getElementById('btnCsv').click()" data-icon="csv" data-label="Экспорт CSV"></button>
+          <button class="btn-block" onclick="document.getElementById('btnPdf').click()" data-icon="printer" data-label="Отчёт PDF"></button>
+          <button class="btn-block" onclick="document.getElementById('btnXlsx').click()" data-icon="xlsx" data-label="Экспорт XLSX"></button>
+        </details>
+
+        <details class="palette-actions">
+          <summary>Дополнительно</summary>
+          <button class="btn-block" onclick="document.getElementById('btn3D').click()" data-icon="router" data-label="3D-визуализация"></button>
+          <button class="btn-block" onclick="document.getElementById('btnSpec').click()" data-icon="patch" data-label="Спецификация"></button>
+          <button class="btn-block" onclick="document.getElementById('btnStats').click()" data-icon="chart" data-label="Статистика покрытия"></button>
+          <button class="btn-block" onclick="document.getElementById('btnPoe').click()" data-icon="lightning" data-label="PoE-бюджет"></button>
+        </details>
+
       </div>
     </aside>
 
     <!-- КАНВАС -->
     <div class="drawing-canvas" id="canvasWrap">
-      <div class="canvas-toolbar">
-        <span class="toolbar-info" id="canvasHint">Создайте или выберите проект</span>
-        <div class="toolbar-actions">
+
+      <!-- Плавающая панель: расчёты + слои -->
+      <div class="tools-float" id="toolsFloat">
+        <div class="tools-float-row">
+          <span class="tools-float-grip" id="toolsFloatDrag" title="Перетащить">⠿</span>
+          <button class="tools-float-btn" id="tfRssi" title="Карта RSSI" data-icon="ap"></button>
+          <button class="tools-float-btn" id="tfSnr" title="Карта SNR" data-icon="sensor"></button>
+          <button class="tools-float-btn" id="tfInterf" title="Карта интерференции" data-icon="target"></button>
+          <button class="tools-float-btn" id="tfStats" title="Статистика покрытия" data-icon="chart"></button>
+          <span class="tools-float-sep">│</span>
+          <button class="tools-float-btn" id="tfLayers" title="Слои (Стены, Мебель, Техника…)">☰</button>
+          
+          <!-- Крестик скрытия панели -->
+          <button class="tools-float-hide btn-close" id="toolsFloatHide" title="Скрыть">
+            <svg viewBox="0 0 100 100" fill="none" stroke="currentColor" stroke-width="12" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="25" y1="25" x2="75" y2="75"></line>
+              <line x1="75" y1="25" x2="25" y2="75"></line>
+            </svg>
+          </button>
+        </div>
+        <div class="tools-float-layers" id="toolsFloatLayers" style="display:none">
           <label class="chk-inline"><input type="checkbox" id="chkLayerWalls" checked> Стены</label>
           <label class="chk-inline"><input type="checkbox" id="chkLayerFurniture" checked> Мебель</label>
           <label class="chk-inline"><input type="checkbox" id="chkLayerDevices" checked> Техника</label>
@@ -93,9 +127,24 @@
         </div>
       </div>
 
+      <!-- Кнопка возврата скрытой панели -->
+      <button class="tools-float-show" id="toolsFloatShow" title="Показать панель" style="display:none">
+        <svg viewBox="0 0 100 100" fill="none" stroke="currentColor" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" style="width: 20px; height: 20px;">
+          <rect x="8" y="8" width="16" height="16" rx="3"/>
+          <line x1="36" y1="16" x2="92" y2="16"/>
+          <rect x="8" y="32" width="16" height="16" rx="3"/>
+          <line x1="36" y1="40" x2="92" y2="40"/>
+          <rect x="8" y="56" width="16" height="16" rx="3"/>
+          <line x1="36" y1="64" x2="92" y2="64"/>
+          <rect x="8" y="80" width="16" height="16" rx="3"/>
+          <line x1="36" y1="88" x2="92" y2="88"/>
+        </svg>
+      </button>
+
       <div class="selection-rect" id="selectionRect"></div>
       <div class="snap-indicator" id="snapIndicator"></div>
 
+      <!-- SVG-ХОЛСТ -->
       <svg id="planSvg" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid meet">
         <defs id="svgDefs">
           <pattern id="pat-brick" width="40" height="20" patternUnits="userSpaceOnUse">
@@ -141,6 +190,8 @@
       <canvas id="heatmapCanvas" style="display:none"></canvas>
 
       <div class="canvas-statusbar">
+        <span class="status-hint" id="canvasHint">Создайте или выберите проект</span>
+        <span class="status-sep">│</span>
         <span id="cursorPos">X: —  Y: —</span>
         <span class="status-sep">│</span>
         <span id="snapStatus">Сетка: 0.5 м</span>
@@ -150,57 +201,42 @@
       </div>
     </div>
 
-    <!-- ПРАВАЯ ПАНЕЛЬ -->
-    <aside class="legend-panel">
-      <div class="legend-tabs">
-        <button class="legend-tab active" data-tab="props">Свойства</button>
-        <button class="legend-tab" data-tab="legend">Легенда</button>
-      </div>
-      <div class="legend-content" id="propsPanel">
-        <div class="props-empty">
-          <div class="props-empty-icon">🎨</div>
-          <div>Выберите объект на чертеже</div>
-        </div>
-      </div>
-      <div class="legend-content" id="legendPanel" style="display:none">
-        <div class="legend-section">
-          <div class="legend-title">01 / МАТЕРИАЛЫ СТЕН</div>
-          <div class="legend-row"><span class="sw" style="background:#E8B5A5"></span> Кирпич <em>15 дБ</em></div>
-          <div class="legend-row"><span class="sw" style="background:#D6EEF6"></span> Стекло <em>3 дБ</em></div>
-          <div class="legend-row"><span class="sw" style="background:#C79070"></span> Дерево <em>6 дБ</em></div>
-          <div class="legend-row"><span class="sw" style="background:#E8E8E8"></span> Гипсокартон <em>4 дБ</em></div>
-          <div class="legend-row"><span class="sw" style="background:#9A9A9A"></span> Бетон <em>25 дБ</em></div>
-        </div>
-        <div class="legend-section">
-          <div class="legend-title">02 / ОБОРУДОВАНИЕ</div>
-          <div class="legend-grid" id="legendGrid"></div>
-        </div>
-        <div class="legend-section">
-          <div class="legend-title">03 / ПОРОГИ RSSI</div>
-          <div class="legend-row"><span class="sw" style="background:#4caf50"></span> Отличный ≥ −65 dBm</div>
-          <div class="legend-row"><span class="sw" style="background:#ffc107"></span> Хороший −65…−75</div>
-          <div class="legend-row"><span class="sw" style="background:#ff9800"></span> Слабый −75…−85</div>
-          <div class="legend-row"><span class="sw" style="background:#f44336"></span> Мёртвая зона &lt; −85</div>
-        </div>
-      </div>
+    <!-- ПРАВАЯ ПАНЕЛЬ — только свойства -->
+    <aside class="legend-panel" id="propsSidePanel" style="display:none">
+      <div class="legend-panel-title">Свойства</div>
+      <div class="legend-content" id="propsPanel"></div>
     </aside>
   </div>
 
-  <footer class="drawing-footer">
-    <span>1:50 — условный масштаб</span>
-    <span>Контуры 1–2 пикселя • Ортогональные трассы</span>
-    <span>СХЕМА РАЗМЕЩЕНИЯ • НЕ ОБМЕРНЫЙ ЧЕРТЁЖ</span>
-  </footer>
 </div>
-<!-- ↑ ЗАКРЫВАЕТСЯ .editor-shell -->
+<!-- ↑ ЗАКРЫВАЕТСЯ .editor-shell (БЕЗ ФУТЕРА) -->
+
+<!-- СКРЫТЫЕ КНОПКИ — сохраняют прежние id для editor.js -->
+<div style="display:none" aria-hidden="true">
+  <button id="btnRssi"></button>
+  <button id="btnSnr"></button>
+  <button id="btnInterf"></button>
+  <button id="btnLoad"></button>
+  <button id="btnAutoPlace"></button>
+  <button id="btnSave"></button>
+  <button id="btnCsv"></button>
+  <button id="btnPdf"></button>
+  <button id="btnXlsx"></button>
+  <button id="btnAutoFill"></button>
+  <button id="btnPlanFact"></button>
+  <button id="btn3D"></button>
+  <button id="btnSpec"></button>
+  <button id="btnStats"></button>
+  <button id="btnPoe"></button>
+</div>
 
 <!-- ============================================================
-     МОДАЛКИ — прямые дети <body>, НЕ внутри .editor-shell
+     МОДАЛКИ (ID сохранены для editor.js)
      ============================================================ -->
 
-<!-- МОДАЛКА: Новый проект -->
 <div class="modal-mask" id="modalMask">
-  <div class="modal modal-wide">
+  <div class="modal modal-wide" style="position:relative">
+    <button class="btn-close modal-close-top" onclick="document.getElementById('modalMask').classList.remove('show')" title="Закрыть"><svg viewBox="0 0 100 100" fill="none" stroke="currentColor" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"><line x1="25" y1="25" x2="75" y2="75"></line><line x1="75" y1="25" x2="25" y2="75"></line></svg></button>
     <h2>Новый проект</h2>
     <p class="modal-hint">Стены строятся автоматически по периметру.</p>
     <label>Название</label>
@@ -225,86 +261,70 @@
   </div>
 </div>
 
-<!-- МОДАЛКА: Статистика -->
 <div class="modal-mask" id="statsModal">
-  <div class="modal" style="width:520px;max-height:80vh;overflow-y:auto">
+  <div class="modal" style="width:520px;max-height:80vh;overflow-y:auto;position:relative">
+    <button class="btn-close modal-close-top" onclick="document.getElementById('statsModal').classList.remove('show')" title="Закрыть"><svg viewBox="0 0 100 100" fill="none" stroke="currentColor" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"><line x1="25" y1="25" x2="75" y2="75"></line><line x1="75" y1="25" x2="25" y2="75"></line></svg></button>
     <h2>📊 Статистика покрытия</h2>
     <div id="statsBody"></div>
     <div class="modal-btns"><button class="cancel" id="statsClose">Закрыть</button></div>
   </div>
 </div>
 
-<!-- МОДАЛКА: Спецификация -->
 <div class="modal-mask" id="specModal">
-  <div class="modal" style="width:600px;max-height:80vh;overflow-y:auto">
+  <div class="modal" style="width:600px;max-height:80vh;overflow-y:auto;position:relative">
+    <button class="btn-close modal-close-top" onclick="document.getElementById('specModal').classList.remove('show')" title="Закрыть"><svg viewBox="0 0 100 100" fill="none" stroke="currentColor" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"><line x1="25" y1="25" x2="75" y2="75"></line><line x1="75" y1="25" x2="25" y2="75"></line></svg></button>
     <h2>📋 Спецификация оборудования</h2>
     <div id="specBody"></div>
     <div class="modal-btns"><button class="cancel" id="specClose">Закрыть</button></div>
   </div>
 </div>
 
-<!-- МОДАЛКА: PoE -->
 <div class="modal-mask" id="poeModal">
-  <div class="modal" style="width:520px;max-height:80vh;overflow-y:auto">
+  <div class="modal" style="width:520px;max-height:80vh;overflow-y:auto;position:relative">
+    <button class="btn-close modal-close-top" onclick="document.getElementById('poeModal').classList.remove('show')" title="Закрыть"><svg viewBox="0 0 100 100" fill="none" stroke="currentColor" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"><line x1="25" y1="25" x2="75" y2="75"></line><line x1="75" y1="25" x2="25" y2="75"></line></svg></button>
     <h2>⚡ PoE-бюджет</h2>
     <div id="poeBody"></div>
     <div class="modal-btns"><button class="cancel" id="poeClose">Закрыть</button></div>
   </div>
 </div>
 
-<!-- МОДАЛКА: Расчёт нагрузки -->
 <div class="modal-mask" id="loadModal">
-  <div class="modal" style="width:560px;max-height:85vh;overflow-y:auto">
+  <div class="modal" style="width:560px;max-height:85vh;overflow-y:auto;position:relative">
+    <button class="btn-close modal-close-top" onclick="document.getElementById('loadModal').classList.remove('show')" title="Закрыть"><svg viewBox="0 0 100 100" fill="none" stroke="currentColor" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"><line x1="25" y1="25" x2="75" y2="75"></line><line x1="75" y1="25" x2="25" y2="75"></line></svg></button>
     <h2>📊 Расчёт нагрузки</h2>
     <div id="loadBody"></div>
-    <div class="modal-btns">
-      <button class="cancel" id="loadClose">Закрыть</button>
-    </div>
+    <div class="modal-btns"><button class="cancel" id="loadClose">Закрыть</button></div>
   </div>
 </div>
 
-<!-- МОДАЛКА: Авто-расстановка AP -->
 <div class="modal-mask" id="autoPlaceModal">
-  <div class="modal" style="width:520px;max-height:88vh;overflow-y:auto">
+  <div class="modal" style="width:520px;max-height:88vh;overflow-y:auto;position:relative">
+    <button class="btn-close modal-close-top" onclick="document.getElementById('autoPlaceModal').classList.remove('show')" title="Закрыть"><svg viewBox="0 0 100 100" fill="none" stroke="currentColor" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"><line x1="25" y1="25" x2="75" y2="75"></line><line x1="75" y1="25" x2="25" y2="75"></line></svg></button>
     <h2>🤖 Автоматическая расстановка AP</h2>
-    <p style="font-size:11px;color:var(--text-dim);margin-bottom:14px">
-      Алгоритм рассчитает количество точек доступа по площади и нагрузке,
-      затем расставит их равномерно с притягиванием к клиентам.
-    </p>
-
+    <p style="font-size:11px;color:var(--text-dim);margin-bottom:14px">Алгоритм рассчитает количество точек доступа по площади и нагрузке, затем расставит их равномерно с притягиванием к клиентам.</p>
     <label>Частота</label>
     <select id="ap_freq">
       <option value="2400">2.4 ГГц (100 Мбит/с)</option>
       <option value="5000" selected>5 ГГц (400 Мбит/с)</option>
       <option value="6000">6 ГГц (600 Мбит/с)</option>
     </select>
-
     <label>Мощность, dBm</label>
     <input type="number" id="ap_power" value="20" min="5" max="30">
-
     <label>Целевое покрытие, %</label>
     <input type="number" id="ap_target" value="95" min="50" max="100">
-
     <div class="modal-btns">
       <button class="cancel" id="autoPlaceClose">Отмена</button>
       <button class="ok" id="autoPlaceCalc">Рассчитать</button>
     </div>
-
     <div id="autoPlaceResult" style="margin-top:16px"></div>
   </div>
 </div>
 
-<!-- МОДАЛКА: Сравнение план/факт -->
 <div class="modal-mask" id="planFactModal">
-  <div class="modal" style="width:820px;max-height:88vh;overflow-y:auto">
+  <div class="modal" style="width:820px;max-height:88vh;overflow-y:auto;position:relative">
+    <button class="btn-close modal-close-top" onclick="document.getElementById('planFactModal').classList.remove('show')" title="Закрыть"><svg viewBox="0 0 100 100" fill="none" stroke="currentColor" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"><line x1="25" y1="25" x2="75" y2="75"></line><line x1="75" y1="25" x2="25" y2="75"></line></svg></button>
     <h2>📐 Сравнение «план vs факт»</h2>
-    <p style="font-size:11px;color:var(--text-dim);margin-bottom:14px">
-      <b>План</b> — RSSI, рассчитанный по физической модели (FSPL + затухание стен).
-      <b>Факт</b> — RSSI, введённый вручную (реальный замер с устройства).
-      Расхождение показывает точность модели: <span style="color:#4caf50">≤ 3 дБ</span> —
-      отлично, <span style="color:#ffc107">3–6 дБ</span> — приемлемо,
-      <span style="color:#f44336">&gt; 6 дБ</span> — нужно калибровать.
-    </p>
+    <p style="font-size:11px;color:var(--text-dim);margin-bottom:14px"><b>План</b> — RSSI, рассчитанный по физической модели (FSPL + затухание стен). <b>Факт</b> — RSSI, введённый вручную (реальный замер с устройства).</p>
     <div id="planFactBody"></div>
     <div class="modal-btns">
       <button class="cancel" id="planFactClose">Закрыть</button>
@@ -313,52 +333,37 @@
   </div>
 </div>
 
-<!-- МОДАЛКА: 3D-визуализация -->
 <div class="modal-mask" id="modal3D">
   <div class="modal modal-3d">
     <div class="modal-3d-head">
       <h2>🌐 3D-визуализация покрытия</h2>
       <div class="modal-3d-controls">
-        <label class="chk-inline">
-          <input type="radio" name="layer3d" value="rssi" checked> RSSI
-        </label>
-        <label class="chk-inline">
-          <input type="radio" name="layer3d" value="snr"> SNR
-        </label>
-        <label class="chk-inline">
-          <input type="radio" name="layer3d" value="interference"> Интерф.
-        </label>
+        <label class="chk-inline"><input type="radio" name="layer3d" value="rssi" checked> RSSI</label>
+        <label class="chk-inline"><input type="radio" name="layer3d" value="snr"> SNR</label>
+        <label class="chk-inline"><input type="radio" name="layer3d" value="interference"> Интерф.</label>
         <span class="sep">│</span>
-        <label class="chk-inline">
-          <input type="checkbox" id="chk3dWalls" checked> Стены
-        </label>
-        <label class="chk-inline">
-          <input type="checkbox" id="chk3dAps" checked> AP
-        </label>
-        <label class="chk-inline">
-          <input type="checkbox" id="chk3dSurface" checked> Поверхность
-        </label>
+        <label class="chk-inline"><input type="checkbox" id="chk3dWalls" checked> Стены</label>
+        <label class="chk-inline"><input type="checkbox" id="chk3dAps" checked> AP</label>
+        <label class="chk-inline"><input type="checkbox" id="chk3dSurface" checked> Поверхность</label>
         <span class="sep">│</span>
-        <label class="chk-inline">
-          Высота:
-          <input type="range" id="height3d" min="1" max="15" value="6" style="width:80px">
-        </label>
+        <label class="chk-inline">Высота: <input type="range" id="height3d" min="1" max="15" value="6" style="width:80px"></label>
         <button class="btn-icon" id="btn3dReset" title="Сбросить вид">⟲</button>
-        <button class="btn-icon" id="btn3dClose" title="Закрыть">✕</button>
+        
+        <!-- Крестик 3D-модалки -->
+        <button class="btn-close" id="btn3dClose" title="Закрыть">
+          <svg viewBox="0 0 100 100" fill="none" stroke="currentColor" stroke-width="12" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="25" y1="25" x2="75" y2="75"></line>
+            <line x1="75" y1="25" x2="25" y2="75"></line>
+          </svg>
+        </button>
       </div>
     </div>
     <div id="scene3dHost" class="scene-3d-host"></div>
-    <div class="scene-3d-hint">
-      🖱 ЛКМ — вращение · колесо — зум · ПКМ — панорама
-    </div>
+    <div class="scene-3d-hint">🖱 ЛКМ — вращение · колесо — зум · ПКМ — панорама</div>
   </div>
 </div>
 
-<!-- ============================================================
-     СКРИПТЫ
-     Порядок важен: importmap → обычные → модуль → editor.js
-     ============================================================ -->
-
+<!-- СКРИПТЫ -->
 <script type="importmap">
 {
   "imports": {
@@ -371,8 +376,111 @@
 <script src="/static/js/api.js"></script>
 <script src="/static/js/editor-api.js"></script>
 <script src="/static/js/report.js"></script>
+<script src="/static/js/icons.js"></script>
 <script type="module" src="/static/js/editor3d.js"></script>
 <script src="/static/js/editor.js"></script>
+<!-- Библиотека для скачивания PDF -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+
+<!-- СКРИПТ ЗАКРЫТИЯ ПО КЛИКУ НА ФОН -->
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+  document.querySelectorAll('.modal-mask').forEach(function (mask) {
+    mask.addEventListener('mousedown', function (e) {
+      // Если кликнули ровно по фону, а не по внутренностям модалки
+      if (e.target === mask) {
+        mask.classList.remove('show');
+        
+        // Очистка после закрытия
+        if (mask.id === 'autoPlaceModal') {
+          var draft = document.getElementById('layerDraft');
+          if (draft) draft.innerHTML = '';
+        }
+        if (mask.id === 'modal3D' && window.Editor3D) {
+          window.Editor3D.close();
+        }
+      }
+    });
+  });
+});
+</script>
+
+<!-- DRAG плавающей панели -->
+<script>
+(function () {
+  var panel   = document.getElementById('toolsFloat');
+  var grip    = document.getElementById('toolsFloatDrag');
+  var hideBtn = document.getElementById('toolsFloatHide');
+  var showBtn = document.getElementById('toolsFloatShow');
+  if (!panel || !grip) return;
+
+  var BTN_MAP = { tfRssi: 'btnRssi', tfSnr: 'btnSnr', tfInterf: 'btnInterf', tfStats: 'btnStats' };
+  Object.keys(BTN_MAP).forEach(function (from) {
+    var b = document.getElementById(from);
+    if (!b) return;
+    b.addEventListener('click', function () {
+      var target = document.getElementById(BTN_MAP[from]);
+      if (target) target.click();
+      document.querySelectorAll('.tools-float-btn').forEach(function (x) { x.classList.remove('active'); });
+      b.classList.add('active');
+      setTimeout(function () { b.classList.remove('active'); }, 1200);
+    });
+  });
+
+  var KEY_POS = 'cw_tools_float_pos', KEY_HIDDEN = 'cw_tools_float_hidden';
+
+  hideBtn.addEventListener('click', function () {
+    panel.style.display = 'none'; showBtn.style.display = 'flex';
+    try { localStorage.setItem(KEY_HIDDEN, '1'); } catch (e) {}
+  });
+  showBtn.addEventListener('click', function () {
+    panel.style.display = 'flex'; showBtn.style.display = 'none';
+    try { localStorage.setItem(KEY_HIDDEN, '0'); } catch (e) {}
+  });
+
+  try {
+    if (localStorage.getItem(KEY_HIDDEN) === '1') { panel.style.display = 'none'; showBtn.style.display = 'flex'; }
+    var savedPos = JSON.parse(localStorage.getItem(KEY_POS) || 'null');
+    if (savedPos && typeof savedPos.left === 'number') {
+      panel.style.right = 'auto'; panel.style.left = savedPos.left + 'px'; panel.style.top = savedPos.top + 'px';
+    }
+  } catch (e) {}
+
+  var dragging = false, startX = 0, startY = 0, startLeft = 0, startTop = 0;
+  var parent = panel.parentElement;
+
+  grip.addEventListener('mousedown', function (e) {
+    dragging = true;
+    var rect = panel.getBoundingClientRect(), prect = parent.getBoundingClientRect();
+    startLeft = rect.left - prect.left; startTop = rect.top - prect.top;
+    startX = e.clientX; startY = e.clientY;
+    panel.style.right = 'auto'; panel.style.left = startLeft + 'px'; panel.style.top = startTop + 'px';
+    document.body.style.userSelect = 'none';
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+    e.preventDefault();
+  });
+
+  function onMove(e) {
+    if (!dragging) return;
+    var dx = e.clientX - startX, dy = e.clientY - startY;
+    var maxLeft = parent.clientWidth - panel.offsetWidth, maxTop = parent.clientHeight - panel.offsetHeight;
+    panel.style.left = Math.max(0, Math.min(maxLeft, startLeft + dx)) + 'px';
+    panel.style.top = Math.max(0, Math.min(maxTop, startTop + dy)) + 'px';
+  }
+
+  function onUp() {
+    if (!dragging) return;
+    dragging = false; document.body.style.userSelect = '';
+    document.removeEventListener('mousemove', onMove);
+    document.removeEventListener('mouseup', onUp);
+    try {
+      var rect = panel.getBoundingClientRect(), prect = parent.getBoundingClientRect();
+      localStorage.setItem(KEY_POS, JSON.stringify({ left: Math.round(rect.left - prect.left), top: Math.round(rect.top - prect.top) }));
+    } catch (e) {}
+  }
+})();
+</script>
 
 </body>
 </html>
