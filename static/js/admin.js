@@ -14,7 +14,7 @@
     var container = document.getElementById('toast-container');
     var toast = document.createElement('div');
     toast.className = 'toast ' + (type || 'success');
-    toast.innerHTML = (type === 'error' ? '❌ ' : '✅ ') + message;
+    toast.textContent = message;
     container.appendChild(toast);
     setTimeout(function () {
       toast.style.opacity = '0';
@@ -60,16 +60,11 @@
           document.getElementById('tab-' + name).style.display = (name === currentTab) ? '' : 'none';
         });
 
-        // Управление поиском
-        var sw = document.getElementById('searchWrapper');
-        var si = document.getElementById('searchInput');
-        if (currentTab === 'users' || currentTab === 'projects') {
-          sw.style.display = '';
-          si.value = '';
-          si.placeholder = currentTab === 'users' ? 'Поиск по ФИО или Email...' : 'Поиск по названию или владельцу...';
-        } else {
-          sw.style.display = 'none';
-        }
+        // Очистка поиска при переключении
+        var su = document.getElementById('searchUsers');
+        var sp = document.getElementById('searchProjects');
+        if (su) su.value = '';
+        if (sp) sp.value = '';
 
         if (currentTab === 'dashboard') loadMetrics();
         if (currentTab === 'users') loadUsers();
@@ -78,11 +73,22 @@
       });
     });
 
-    // Поиск
-    document.getElementById('searchInput').addEventListener('input', function() {
+    // Поиск по пользователям
+    document.getElementById('searchUsers').addEventListener('input', function() {
       var q = this.value.toLowerCase();
-      if (currentTab === 'users') renderUsers(allUsers.filter(u => (u.full_name||'').toLowerCase().includes(q) || (u.email||'').toLowerCase().includes(q)));
-      if (currentTab === 'projects') renderProjects(allProjects.filter(p => (p.name||'').toLowerCase().includes(q) || (p.owner_name||'').toLowerCase().includes(q)));
+      renderUsers(allUsers.filter(u => 
+        (u.full_name||'').toLowerCase().includes(q) || 
+        (u.email||'').toLowerCase().includes(q)
+      ));
+    });
+
+    // Поиск по проектам
+    document.getElementById('searchProjects').addEventListener('input', function() {
+      var q = this.value.toLowerCase();
+      renderProjects(allProjects.filter(p => 
+        (p.name||'').toLowerCase().includes(q) || 
+        (p.owner_name||'').toLowerCase().includes(q)
+      ));
     });
 
     loadMetrics();
@@ -97,7 +103,6 @@
   var roleTargetId = null;
 
   function initModals() {
-    // Создание пользователя
     document.getElementById('addUserBtn').addEventListener('click', function () {
       document.getElementById('nuName').value = '';
       document.getElementById('nuEmail').value = '';
@@ -125,7 +130,6 @@
         .catch(function (err) { showToast(err.message, 'error'); });
     });
 
-    // Смена роли
     document.getElementById('roleCancel').addEventListener('click', () => roleModal.classList.remove('show'));
     document.getElementById('roleSave').addEventListener('click', function () {
       var newRole = document.getElementById('roleSelect').value;
@@ -145,11 +149,11 @@
   function loadMetrics() {
     API.get('/api/admin/metrics').then(function (m) {
       document.getElementById('metricGrid').innerHTML =
-        card('Пользователей', m.users.total, m.users.active + ' активных · ' + m.users.new_today + ' новых', 'accent') +
-        card('Проектов', m.projects.total, m.projects.total_area + ' м² спроектировано', 'info') +
-        card('Точек доступа', m.aps.total, 'всего в системе', 'ok') +
-        card('Устройств', m.devices.total, 'техника + IoT', 'info') +
-        card('Элементов', m.elements.total, 'стены, мебель', 'warn');
+        card('Пользователи', m.users.total, m.users.active + ' активных') +
+        card('Проекты', m.projects.total, m.projects.total_area + ' м² спроектировано') +
+        card('Точки доступа', m.aps.total, 'всего в системе') +
+        card('Устройства', m.devices.total, 'техника и IoT') +
+        card('Элементы', m.elements.total, 'стены, мебель');
       
       renderBarChart('regChart', m.registrations_7d);
       renderBarChart('projChart', m.projects_7d, true);
@@ -158,8 +162,8 @@
     }).catch(function (err) { console.error(err); });
   }
 
-  function card(label, value, sub, cls) {
-    return '<div class="metric-card ' + (cls || '') + '"><div class="label">' + label + '</div><div class="value">' + value + '</div><div class="sub">' + (sub || '') + '</div></div>';
+  function card(label, value, sub) {
+    return '<div class="metric-card"><div class="label">' + label + '</div><div class="value">' + value + '</div><div class="sub">' + (sub || '') + '</div></div>';
   }
 
   function renderBarChart(elId, data, green) {
@@ -171,7 +175,7 @@
   }
 
   function renderRoleChart(byRole, total) {
-    var roles = [{ key: 'admin', name: 'Админы', color: '#f44336' }, { key: 'engineer', name: 'Инженеры', color: '#0e639c' }, { key: 'analyst', name: 'Аналитики', color: '#858585' }];
+    var roles = [{ key: 'admin', name: 'Администраторы', color: '#f44336' }, { key: 'engineer', name: 'Инженеры', color: '#0e639c' }, { key: 'analyst', name: 'Аналитики', color: '#858585' }];
     document.getElementById('roleChart').innerHTML = roles.map(function (r) {
       var c = byRole[r.key] || 0, pct = total ? (c / total) * 100 : 0;
       return '<div class="role-row"><div class="role-name">' + r.name + '</div><div class="role-bar"><div class="role-fill" style="width:' + pct + '%;background:' + r.color + '"></div></div><div class="role-count">' + c + '</div></div>';
@@ -179,7 +183,7 @@
   }
 
   function renderContentChart(m) {
-    var items = [{ name: 'AP', count: m.aps.total, color: '#0e639c' }, { name: 'Устройства', count: m.devices.total, color: '#3498db' }, { name: 'Элементы', count: m.elements.total, color: '#ffc107' }];
+    var items = [{ name: 'Точки доступа', count: m.aps.total, color: '#0e639c' }, { name: 'Устройства', count: m.devices.total, color: '#3498db' }, { name: 'Элементы плана', count: m.elements.total, color: '#ffc107' }];
     var max = Math.max.apply(null, items.map(function (i) { return i.count; })) || 1;
     document.getElementById('contentChart').innerHTML = items.map(function (i) {
       var pct = (i.count / max) * 100;
@@ -207,15 +211,15 @@
     users.forEach(function (u) {
       var tr = document.createElement('tr');
       var roleBadge = '<span class="badge ' + u.role + '">' + roleRu(u.role) + '</span>';
-      var statusBadge = u.is_active ? '<span class="badge active">активен</span>' : '<span class="badge blocked">заблокирован</span>';
+      var statusBadge = u.is_active ? '<span class="badge active">Активен</span>' : '<span class="badge blocked">Заблокирован</span>';
       var self = me && me.id === u.id;
       
-      var actions = self ? '<span style="color:var(--text-dim);font-size:11px">(это вы)</span>'
-        : '<button class="btn-xs" data-act="role" data-id="' + u.id + '">Роль</button> ' +
-          '<button class="btn-xs" data-act="block" data-id="' + u.id + '">' + (u.is_active ? 'Блок' : 'Разблок') + '</button> ' +
-          '<button class="btn-xs" data-act="delete" data-id="' + u.id + '" style="color:#f44336">Удалить</button>';
+      var actions = self ? '<span style="color:var(--text-dim);font-size:12px">Текущий профиль</span>'
+        : '<button class="btn-sm" data-act="role" data-id="' + u.id + '" style="padding:4px 8px;margin-right:4px;">Роль</button>' +
+          '<button class="btn-sm" data-act="block" data-id="' + u.id + '" style="padding:4px 8px;margin-right:4px;">' + (u.is_active ? 'Заблокировать' : 'Разблокировать') + '</button>' +
+          '<button class="btn-sm" data-act="delete" data-id="' + u.id + '" style="padding:4px 8px;color:#f44336;">Удалить</button>';
 
-      tr.innerHTML = '<td>' + u.id + '</td><td><strong>' + esc(u.full_name) + '</strong></td><td>' + esc(u.email) + '</td><td>' + roleBadge + '</td><td>' + statusBadge + '</td><td>' + fmtDate(u.created_at) + '</td><td>' + (u.last_login ? fmtDate(u.last_login) : '—') + '</td><td>' + actions + '</td>';
+      tr.innerHTML = '<td>' + u.id + '</td><td><strong>' + esc(u.full_name) + '</strong></td><td>' + esc(u.email) + '</td><td>' + roleBadge + '</td><td>' + statusBadge + '</td><td>' + fmtDate(u.created_at) + '</td><td>' + (u.last_login ? fmtDate(u.last_login) : '—') + '</td><td style="white-space:nowrap">' + actions + '</td>';
       tbody.appendChild(tr);
     });
 
@@ -238,7 +242,7 @@
           }).catch(err => showToast(err.message, 'error'));
         } else if (act === 'role') {
           roleTargetId = id;
-          document.getElementById('roleModalEmail').textContent = user.email;
+          document.getElementById('roleModalEmail').textContent = 'Сотрудник: ' + user.email;
           document.getElementById('roleSelect').value = user.role;
           roleModal.classList.add('show');
         }
@@ -266,7 +270,7 @@
     list.forEach(function (p) {
       var tr = document.createElement('tr');
       var ownerHtml = p.owner_name ? '<strong>' + esc(p.owner_name) + '</strong><br><span style="font-size:11px;color:var(--text-dim)">' + esc(p.owner_email) + '</span>' : '<span style="color:var(--text-dim)">Нет владельца</span>';
-      tr.innerHTML = '<td>' + p.id + '</td><td><strong>' + esc(p.name) + '</strong></td><td>' + ownerHtml + '</td><td>' + p.width_m + '×' + p.height_m + ' м</td><td>' + p.elements_count + '</td><td>' + p.aps_count + '</td><td>' + fmtDate(p.created_at) + '</td><td><button class="btn-xs" data-del="' + p.id + '" style="color:#f44336">Удалить</button></td>';
+      tr.innerHTML = '<td>' + p.id + '</td><td><strong>' + esc(p.name) + '</strong></td><td>' + ownerHtml + '</td><td>' + p.width_m + ' × ' + p.height_m + ' м</td><td>' + p.elements_count + '</td><td>' + p.aps_count + '</td><td>' + fmtDate(p.created_at) + '</td><td><button class="btn-sm" data-del="' + p.id + '" style="padding:4px 8px;color:#f44336;">Удалить</button></td>';
       tbody.appendChild(tr);
     });
 

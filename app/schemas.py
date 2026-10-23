@@ -115,27 +115,6 @@ class AccessPointOut(AccessPointCreate):
     class Config:
         from_attributes = True
 
-
-# ---------- Измерения ----------
-class MeasurementCreate(BaseModel):
-    name: Optional[str] = None
-    x: float
-    y: float
-    rssi: float = -65.0
-    snr: Optional[float] = None
-    interference: Optional[float] = None
-    mode: str = "manual"
-
-
-class MeasurementOut(MeasurementCreate):
-    id: int
-    project_id: int
-    measured_at: datetime
-
-    class Config:
-        from_attributes = True
-
-
 # ---------- SSID-профили ----------
 class SSIDProfileCreate(BaseModel):
     name: str

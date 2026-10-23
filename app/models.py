@@ -87,6 +87,8 @@ class ClientDevice(Base):
     required_speed = Column(Float, default=10.0)
     ssid_type = Column(String(20), default="corporate")
     meta = Column(Text, nullable=True)
+    width = Column(Float, default=1.0)
+    height = Column(Float, default=1.0)
 
     project = relationship("Project", back_populates="devices")
 
@@ -105,6 +107,8 @@ class AccessPoint(Base):
     band = Column(String(10), default="5")
     channel = Column(Integer, default=44)
     ssid_type = Column(String(20), default="corporate")
+    width = Column(Float, default=1.0)
+    height = Column(Float, default=1.0)
 
     project = relationship("Project", back_populates="aps")
 
@@ -187,6 +191,8 @@ class PoESwitch(Base):
     poe_ports = Column(Integer, default=24)
     location = Column(String(120), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
+    width = Column(Float, default=1.0)
+    height = Column(Float, default=1.0)
 
     project = relationship("Project", back_populates="switches")
 

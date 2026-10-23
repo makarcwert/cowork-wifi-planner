@@ -343,3 +343,92 @@ body > .drawing-footer {
   width: 20px;
   height: 20px;
 }
+/* ============================================================
+   Шапка как в редакторе
+   ============================================================ */
+.topbar-drawing {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 16px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  flex-shrink: 0;
+}
+.topbar-left, .topbar-right { display: flex; align-items: center; gap: 4px; }
+.brand { font-weight: 600; color: var(--text); font-size: 13px; }
+
+a.brand-link {
+  text-decoration: none;
+  color: var(--text);
+  font-weight: 600;
+  font-size: 13px;
+  cursor: pointer;
+}
+a.brand-link:hover { color: var(--accent); text-decoration: none; }
+
+.menu-item {
+  padding: 5px 10px;
+  font-size: 12px;
+  color: var(--text-dim);
+  text-decoration: none;
+  border-radius: 3px;
+  white-space: nowrap;
+}
+.menu-item:hover {
+  background: var(--panel-2);
+  color: var(--text);
+  text-decoration: none;
+}
+.menu-item.active {
+  background: var(--accent);
+  color: #fff;
+}
+
+.avatar {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 700;
+  margin-left: 6px;
+  flex-shrink: 0;
+}
+.spacer { flex: 1; }
+
+.btn-icon {
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--text);
+  width: 32px;
+  height: 32px;
+  border-radius: 3px;
+  cursor: pointer;
+  font-size: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.btn-icon:hover { background: var(--panel-2); border-color: var(--border); }
+
+.btn-primary-sm {
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  padding: 6px 12px;
+  border-radius: 3px;
+  cursor: pointer;
+  font-size: 12px;
+}
+.btn-primary-sm:hover { background: var(--accent-hover); }
+
+.zoom-label { font-size: 11px; color: var(--text-dim); min-width: 38px; text-align: center; }
+.sep { color: var(--border); }

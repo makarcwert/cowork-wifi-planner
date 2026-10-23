@@ -5,7 +5,16 @@
    ============================================================ */
 (function () {
   'use strict';
-
+  function showSaveToast(message) {
+    var toast = document.createElement('div');
+    toast.style.cssText = 'position:fixed; bottom:20px; right:20px; background:var(--panel); color:var(--green); padding:12px 20px; border-radius:6px; border-left:4px solid var(--green); box-shadow:0 4px 12px rgba(0,0,0,0.3); font-size:13px; z-index:10000; transition: opacity 0.3s;';
+    toast.innerHTML = '✅ ' + message;
+    document.body.appendChild(toast);
+    setTimeout(function () {
+      toast.style.opacity = '0';
+      setTimeout(function () { toast.remove(); }, 300);
+    }, 3000);
+  }
   // ============================================================
   // ПРИМЕНЕНИЕ SVG-ИКОНОК ИЗ icons.js
   // ============================================================
@@ -713,6 +722,7 @@
       if (cursor < len - 0.5) segments.push({ from: cursor, to: len });
       if (!doorsOnWall.length) segments.push({ from: 0, to: len });
 
+      // 1. Визуальные линии (без кликов)
       segments.forEach(seg => {
         const s = m2px(el.x1, el.y1);
         const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
@@ -721,31 +731,63 @@
         line.setAttribute('stroke', 'url(#' + mat.pattern + ')');
         line.setAttribute('stroke-width', mat.width);
         line.setAttribute('stroke-linecap', 'square');
-        line.dataset.kind = 'element'; line.dataset.id = el.id;
-        if (isSelected('element', el.id)) { line.setAttribute('stroke', '#2E5EAA'); line.setAttribute('stroke-width', mat.width + 3); }
-        line.style.cursor = 'move';
-        line.addEventListener('click', e => {
-          e.stopPropagation();
-          if (state.tool !== 'select') return;
-          if (e.shiftKey) toggleMulti('element', el.id);
-          else { state.selected = { kind:'element', id:el.id }; state.multiSelected = []; }
-          render(); renderProps();
-        });
-        line.addEventListener('mousedown', e => {
-          if (state.tool === 'select') startDrag(e, 'element', el.id);
-        });
+        line.setAttribute('pointer-events', 'none'); // Игнорируем клики по самой линии
+        if (isSelected('element', el.id)) {
+          line.setAttribute('stroke', '#2E5EAA');
+          line.setAttribute('stroke-width', mat.width + 3);
+        }
         L.layerWalls.appendChild(line);
       });
 
-      // Размеры стены
-      const nx = -uy, ny = ux, off = 14;
+      // 2. Размеры
+      const nx = -uy, ny = ux;
+      const off = 14;
       const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
       const dim = document.createElementNS('http://www.w3.org/2000/svg', 'line');
       dim.setAttribute('x1', a.x + nx * off); dim.setAttribute('y1', a.y + ny * off);
       dim.setAttribute('x2', b.x + nx * off); dim.setAttribute('y2', b.y + ny * off);
-      dim.setAttribute('stroke', '#666'); dim.setAttribute('stroke-width', '0.8'); dim.setAttribute('stroke-dasharray', '3 3');
-      dim.setAttribute('pointer-events', 'none');
+      dim.setAttribute('stroke', '#666'); dim.setAttribute('stroke-width', '0.8');
+      dim.setAttribute('stroke-dasharray', '3 3'); dim.setAttribute('pointer-events', 'none');
       L.layerWalls.appendChild(dim);
+
+      [a, b].forEach(pt => {
+        const tk = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+        tk.setAttribute('x1', pt.x + nx * (off - 4)); tk.setAttribute('y1', pt.y + ny * (off - 4));
+        tk.setAttribute('x2', pt.x + nx * (off + 4)); tk.setAttribute('y2', pt.y + ny * (off + 4));
+        tk.setAttribute('stroke', '#666'); tk.setAttribute('stroke-width', '0.8'); tk.setAttribute('pointer-events', 'none');
+        L.layerWalls.appendChild(tk);
+      });
+
+      const lenM = Math.hypot(el.x2 - el.x1, el.y2 - el.y1).toFixed(2);
+      const lbl = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+      lbl.setAttribute('x', mid.x + nx * off); lbl.setAttribute('y', mid.y + ny * off - 3);
+      lbl.setAttribute('text-anchor', 'middle'); lbl.setAttribute('class', 'svg-dim-label');
+      lbl.setAttribute('pointer-events', 'none'); lbl.textContent = lenM + ' м';
+      L.layerWalls.appendChild(lbl);
+
+      // 3. Широкая невидимая хит-зона для кликов
+      const hitWall = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+      hitWall.setAttribute('x1', a.x); hitWall.setAttribute('y1', a.y);
+      hitWall.setAttribute('x2', b.x); hitWall.setAttribute('y2', b.y);
+      hitWall.setAttribute('stroke', 'transparent');
+      hitWall.setAttribute('stroke-width', '16'); // Клик срабатывает в радиусе 8px от линии
+      hitWall.setAttribute('pointer-events', 'stroke');
+      hitWall.style.cursor = 'move';
+      hitWall.dataset.kind = 'element'; hitWall.dataset.id = el.id;
+
+      hitWall.addEventListener('click', e => {
+        e.stopPropagation();
+        if (state.tool === 'wall' || state.tool === 'door') setActiveTool('select');
+        if (e.shiftKey) toggleMulti('element', el.id);
+        else { state.selected = { kind:'element', id:el.id }; state.multiSelected = []; }
+        render(); renderProps();
+      });
+      
+      hitWall.addEventListener('mousedown', e => {
+        if (state.tool === 'select') startDrag(e, 'element', el.id);
+      });
+      
+      L.layerWalls.appendChild(hitWall);
     }
   }
 
@@ -791,7 +833,16 @@
       leaf.dataset.kind = 'element'; leaf.dataset.id = el.id; leaf.style.cursor = 'pointer';
       leaf.addEventListener('click', e => {
         e.stopPropagation();
-        if (state.tool === 'select') { state.selected = { kind:'element', id:el.id }; state.multiSelected = []; render(); renderProps(); }
+        if (state.tool === 'wall' || state.tool === 'door') setActiveTool('select');
+        if (state.tool === 'select') {
+          if (e.shiftKey) {
+            toggleMulti('element', el.id);
+          } else {
+            state.selected = { kind:'element', id:el.id }; 
+            state.multiSelected = []; 
+          }
+          render(); renderProps();
+        }
       });
       L.layerDoors.appendChild(leaf);
 
@@ -821,9 +872,20 @@
       hit.style.cursor = 'move';
       hit.addEventListener('click', e => {
         e.stopPropagation();
-        if (state.tool === 'select') { state.selected = { kind:'element', id:el.id }; state.multiSelected = []; render(); renderProps(); }
+        if (state.tool === 'wall' || state.tool === 'door') setActiveTool('select');
+        if (state.tool === 'select') {
+          if (e.shiftKey) {
+            toggleMulti('element', el.id);
+          } else {
+            state.selected = { kind:'element', id:el.id }; 
+            state.multiSelected = []; 
+          }
+          render(); renderProps();
+        }
       });
-      hit.addEventListener('mousedown', e => { if (state.tool === 'select') startDrag(e, 'element', el.id); });
+      hit.addEventListener('mousedown', e => { 
+        if (state.tool === 'select') startDrag(e, 'element', el.id); 
+      });
       L.layerDoors.appendChild(hit);
     }
   }
@@ -831,6 +893,20 @@
   // ============================================================
   // РЕНДЕР: ОСТАЛЬНЫЕ ОБЪЕКТЫ
   // ============================================================
+    // Поиск ближайшего угла стены для привязки
+  function findAnchor(x, y, t = 0.8) {
+    let best = null, bd = t;
+    for (const el of state.elements) {
+      if (el.type !== 'wall') continue;
+      [{x:el.x1,y:el.y1},{x:el.x2,y:el.y2},{x:(el.x1+el.x2)/2,y:(el.y1+el.y2)/2}]
+        .forEach(c => {
+          const d = Math.hypot(c.x - x, c.y - y);
+          if (d < bd) { bd = d; best = c; }
+        });
+    }
+    return best;
+  }
+
   function renderShapes() {
     L.layerRooms.innerHTML = '';
     for (const el of state.elements) {
@@ -877,26 +953,64 @@
   function renderFurniture() {
     L.layerFurniture.innerHTML = '';
     const ICON_MAP = { sofa:'sofa', table:'table', chair:'chair', plant:'plant' };
+    
     for (const el of state.elements) {
       if (el.type !== 'furniture') continue;
+      
       const p = m2px(el.x, el.y);
-      const wPx = (el.width || 1.5) * PX_PER_M, hPx = (el.height || 1) * PX_PER_M;
-      const scale = wPx / 40;
+      // Берем размеры из объекта (по умолчанию 1.5 на 1 метр)
+      const wPx = (el.width || 1.5) * PX_PER_M; 
+      const hPx = (el.height || 1) * PX_PER_M;
+      
       const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-      g.setAttribute('transform', 'translate(' + (p.x - wPx/2) + ',' + (p.y - hPx/2) + ') scale(' + scale + ')');
-      g.dataset.kind = 'element'; g.dataset.id = el.id; g.style.cursor = 'move';
+      // Центрируем объект по его координатам x, y
+      g.setAttribute('transform', 'translate(' + (p.x - wPx/2) + ',' + (p.y - hPx/2) + ')');
+      g.dataset.kind = 'element'; 
+      g.dataset.id = el.id; 
+      g.style.cursor = 'move';
+      
       const fo = document.createElementNS('http://www.w3.org/2000/svg', 'foreignObject');
-      fo.setAttribute('width', 40); fo.setAttribute('height', 40);
+      fo.setAttribute('width', wPx); 
+      fo.setAttribute('height', hPx);
+      
       const div = document.createElement('div');
-      div.setAttribute('xmlns', 'http://www.w3.org/1999/xhtml'); div.style.width = '40px'; div.style.height = '40px';
+      div.setAttribute('xmlns', 'http://www.w3.org/1999/xhtml'); 
+      div.style.width = wPx + 'px'; 
+      div.style.height = hPx + 'px';
       div.style.color = isSelected('element', el.id) ? '#2E5EAA' : 'var(--text-dim)';
+      
+      // Иконка заполнит весь div благодаря CSS (добавили в прошлом шаге)
       div.innerHTML = window.getEditorIcon(ICON_MAP[el.subtype] || 'table');
-      fo.appendChild(div); g.appendChild(fo);
-      g.addEventListener('mousedown', e => startDrag(e, 'element', el.id));
+      
+      fo.appendChild(div); 
+      g.appendChild(fo);
+      
+      // Подпись под мебелью
+      const lbl = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+      lbl.setAttribute('x', wPx/2); 
+      lbl.setAttribute('y', hPx + 12); 
+      lbl.setAttribute('text-anchor', 'middle'); 
+      lbl.setAttribute('class', 'svg-label');
+      lbl.textContent = el.name || ''; 
+      g.appendChild(lbl);
+      
+      g.addEventListener('mousedown', e => { 
+        if (state.tool === 'select') startDrag(e, 'element', el.id); 
+      });
       g.addEventListener('click', e => {
         e.stopPropagation();
-        if (state.tool === 'select') { state.selected = { kind:'element', id:el.id }; state.multiSelected = []; render(); renderProps(); }
+        if (state.tool === 'wall' || state.tool === 'door') setActiveTool('select');
+        if (state.tool === 'select') {
+          if (e.shiftKey) {
+            toggleMulti('element', el.id);
+          } else {
+            state.selected = { kind:'element', id:el.id }; 
+            state.multiSelected = []; 
+          }
+          render(); renderProps();
+        }
       });
+      
       L.layerFurniture.appendChild(g);
     }
   }
@@ -910,62 +1024,126 @@
       t.setAttribute('x', p.x); t.setAttribute('y', p.y); t.setAttribute('class', 'svg-label');
       t.dataset.kind = 'element'; t.dataset.id = el.id; t.style.cursor = 'move';
       t.textContent = el.name || 'Текст';
-      t.addEventListener('mousedown', e => startDrag(e, 'element', el.id));
+      
+      t.addEventListener('mousedown', e => { if (state.tool === 'select') startDrag(e, 'element', el.id); });
       t.addEventListener('click', e => {
         e.stopPropagation();
-        if (state.tool === 'select') { state.selected = { kind:'element', id:el.id }; state.multiSelected = []; render(); renderProps(); }
+        if (state.tool === 'wall' || state.tool === 'door') setActiveTool('select');
+        if (state.tool === 'select') {
+          if (e.shiftKey) {
+            toggleMulti('element', el.id);
+          } else {
+            state.selected = { kind:'element', id:el.id }; 
+            state.multiSelected = []; 
+          }
+          render(); renderProps();
+        }
       });
       L.layerText.appendChild(t);
     }
   }
 
+  // Словари для иконок
   const DEV_ICON = { pc:'pc', laptop:'laptop', printer:'printer', scanner:'scanner', camera:'camera', router:'router', patch:'patch', wlc:'wlc' };
+  const IOT_ICON = { light:'light', sensor:'sensor', lock:'lock', doorphone:'doorphone', ac:'ac' };
+  function renderAPs() {
+    L.layerAps.innerHTML = '';
+    for (const ap of state.aps) {
+      const p = m2px(ap.x, ap.y);
+      const wPx = (ap.width || 1) * PX_PER_M, hPx = (ap.height || 1) * PX_PER_M;
+      const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+      g.setAttribute('transform', 'translate(' + (p.x - wPx/2) + ',' + (p.y - hPx/2) + ')');
+      g.dataset.kind = 'ap'; g.dataset.id = ap.id; g.style.cursor = 'move';
+      
+      const fo = document.createElementNS('http://www.w3.org/2000/svg', 'foreignObject');
+      fo.setAttribute('width', wPx); fo.setAttribute('height', hPx);
+      const div = document.createElement('div');
+      div.setAttribute('xmlns', 'http://www.w3.org/1999/xhtml'); div.style.width = wPx + 'px'; div.style.height = hPx + 'px';
+      div.style.color = '#2E5EAA'; div.innerHTML = window.getEditorIcon('ap');
+      fo.appendChild(div); g.appendChild(fo);
+      
+      const lbl = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+      lbl.setAttribute('x', wPx/2); lbl.setAttribute('y', hPx + 12); lbl.setAttribute('text-anchor', 'middle'); lbl.setAttribute('class', 'svg-label');
+      lbl.textContent = ap.name; g.appendChild(lbl);
+      
+      g.addEventListener('mousedown', e => { if (state.tool === 'select') startDrag(e, 'ap', ap.id); });
+      g.addEventListener('click', e => {
+        e.stopPropagation();
+        if (state.tool === 'wall' || state.tool === 'door') setActiveTool('select');
+        if (state.tool === 'select') {
+          if (e.shiftKey) toggleMulti('ap', ap.id);
+          else { state.selected = { kind:'ap', id:ap.id }; state.multiSelected = []; }
+          render(); renderProps();
+        }
+      });
+      L.layerAps.appendChild(g);
+    }
+  }
+
   function renderDevices() {
     L.layerDevices.innerHTML = '';
+    const DEV_ICON = { pc:'pc', laptop:'laptop', printer:'printer', scanner:'scanner', camera:'camera', router:'router', patch:'patch', wlc:'wlc' };
     for (const d of state.devices) {
       if (!DEV_ICON[d.type]) continue;
       const p = m2px(d.x, d.y);
+      const wPx = (d.width || 1) * PX_PER_M, hPx = (d.height || 1) * PX_PER_M;
       const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-      g.setAttribute('transform', 'translate(' + (p.x - 16) + ',' + (p.y - 16) + ')');
+      g.setAttribute('transform', 'translate(' + (p.x - wPx/2) + ',' + (p.y - hPx/2) + ')');
       g.dataset.kind = 'device'; g.dataset.id = d.id; g.style.cursor = 'move';
+      
       const fo = document.createElementNS('http://www.w3.org/2000/svg', 'foreignObject');
-      fo.setAttribute('width', 32); fo.setAttribute('height', 32);
+      fo.setAttribute('width', wPx); fo.setAttribute('height', hPx);
       const div = document.createElement('div');
-      div.setAttribute('xmlns', 'http://www.w3.org/1999/xhtml'); div.style.width = '32px'; div.style.height = '32px';
+      div.setAttribute('xmlns', 'http://www.w3.org/1999/xhtml'); div.style.width = wPx + 'px'; div.style.height = hPx + 'px';
       div.style.color = isSelected('device', d.id) ? '#2E5EAA' : 'var(--text-dim)';
       div.innerHTML = window.getEditorIcon(DEV_ICON[d.type]);
       fo.appendChild(div); g.appendChild(fo);
+      
       const lbl = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-      lbl.setAttribute('x', 16); lbl.setAttribute('y', 44); lbl.setAttribute('text-anchor', 'middle'); lbl.setAttribute('class', 'svg-label');
+      lbl.setAttribute('x', wPx/2); lbl.setAttribute('y', hPx + 12); lbl.setAttribute('text-anchor', 'middle'); lbl.setAttribute('class', 'svg-label');
       lbl.textContent = d.name; g.appendChild(lbl);
-      g.addEventListener('mousedown', e => startDrag(e, 'device', d.id));
+      
+      g.addEventListener('mousedown', e => { if (state.tool === 'select') startDrag(e, 'device', d.id); });
       g.addEventListener('click', e => {
         e.stopPropagation();
-        if (state.tool === 'select') { state.selected = { kind:'device', id:d.id }; state.multiSelected = []; render(); renderProps(); }
+        if (state.tool === 'wall' || state.tool === 'door') setActiveTool('select');
+        if (state.tool === 'select') {
+          if (e.shiftKey) toggleMulti('device', d.id);
+          else { state.selected = { kind:'device', id:d.id }; state.multiSelected = []; }
+          render(); renderProps();
+        }
       });
       L.layerDevices.appendChild(g);
     }
   }
 
-  const IOT_ICON = { light:'light', sensor:'sensor', lock:'lock', doorphone:'doorphone', ac:'ac' };
   function renderIoT() {
     L.layerIoT.innerHTML = '';
+    const IOT_ICON = { light:'light', sensor:'sensor', lock:'lock', doorphone:'doorphone', ac:'ac' };
     for (const d of state.devices) {
       if (!IOT_ICON[d.type]) continue;
       const p = m2px(d.x, d.y);
+      const wPx = (d.width || 1) * PX_PER_M, hPx = (d.height || 1) * PX_PER_M;
       const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-      g.setAttribute('transform', 'translate(' + (p.x - 14) + ',' + (p.y - 14) + ')');
+      g.setAttribute('transform', 'translate(' + (p.x - wPx/2) + ',' + (p.y - hPx/2) + ')');
       g.dataset.kind = 'device'; g.dataset.id = d.id; g.style.cursor = 'move';
+      
       const fo = document.createElementNS('http://www.w3.org/2000/svg', 'foreignObject');
-      fo.setAttribute('width', 28); fo.setAttribute('height', 28);
+      fo.setAttribute('width', wPx); fo.setAttribute('height', hPx);
       const div = document.createElement('div');
-      div.setAttribute('xmlns', 'http://www.w3.org/1999/xhtml'); div.style.width = '28px'; div.style.height = '28px';
+      div.setAttribute('xmlns', 'http://www.w3.org/1999/xhtml'); div.style.width = wPx + 'px'; div.style.height = hPx + 'px';
       div.innerHTML = window.getEditorIcon(IOT_ICON[d.type]);
       fo.appendChild(div); g.appendChild(fo);
-      g.addEventListener('mousedown', e => startDrag(e, 'device', d.id));
+      
+      g.addEventListener('mousedown', e => { if (state.tool === 'select') startDrag(e, 'device', d.id); });
       g.addEventListener('click', e => {
         e.stopPropagation();
-        if (state.tool === 'select') { state.selected = { kind:'device', id:d.id }; state.multiSelected = []; render(); renderProps(); }
+        if (state.tool === 'wall' || state.tool === 'door') setActiveTool('select');
+        if (state.tool === 'select') {
+          if (e.shiftKey) toggleMulti('device', d.id);
+          else { state.selected = { kind:'device', id:d.id }; state.multiSelected = []; }
+          render(); renderProps();
+        }
       });
       L.layerIoT.appendChild(g);
     }
@@ -975,49 +1153,33 @@
     L.layerSwitches.innerHTML = '';
     for (const sw of state.switches) {
       const p = m2px(sw.x, sw.y);
+      const wPx = (sw.width || 1) * PX_PER_M, hPx = (sw.height || 1) * PX_PER_M;
       const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-      g.setAttribute('transform', 'translate(' + (p.x - 20) + ',' + (p.y - 16) + ')');
+      g.setAttribute('transform', 'translate(' + (p.x - wPx/2) + ',' + (p.y - hPx/2) + ')');
       g.dataset.kind = 'switch'; g.dataset.id = sw.id; g.style.cursor = 'move';
+      
       const fo = document.createElementNS('http://www.w3.org/2000/svg', 'foreignObject');
-      fo.setAttribute('width', 40); fo.setAttribute('height', 32);
+      fo.setAttribute('width', wPx); fo.setAttribute('height', hPx);
       const div = document.createElement('div');
-      div.setAttribute('xmlns', 'http://www.w3.org/1999/xhtml'); div.style.width = '40px'; div.style.height = '32px';
+      div.setAttribute('xmlns', 'http://www.w3.org/1999/xhtml'); div.style.width = wPx + 'px'; div.style.height = hPx + 'px';
       div.innerHTML = window.getEditorIcon('switch');
       fo.appendChild(div); g.appendChild(fo);
+      
       const lbl = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-      lbl.setAttribute('x', 20); lbl.setAttribute('y', 44); lbl.setAttribute('text-anchor', 'middle'); lbl.setAttribute('class', 'svg-label');
+      lbl.setAttribute('x', wPx/2); lbl.setAttribute('y', hPx + 12); lbl.setAttribute('text-anchor', 'middle'); lbl.setAttribute('class', 'svg-label');
       lbl.textContent = sw.name; g.appendChild(lbl);
-      g.addEventListener('mousedown', e => startDrag(e, 'switch', sw.id));
+      
+      g.addEventListener('mousedown', e => { if (state.tool === 'select') startDrag(e, 'switch', sw.id); });
       g.addEventListener('click', e => {
         e.stopPropagation();
-        if (state.tool === 'select') { state.selected = { kind:'switch', id:sw.id }; state.multiSelected = []; render(); renderProps(); }
+        if (state.tool === 'wall' || state.tool === 'door') setActiveTool('select');
+        if (state.tool === 'select') {
+          if (e.shiftKey) toggleMulti('switch', sw.id);
+          else { state.selected = { kind:'switch', id:sw.id }; state.multiSelected = []; }
+          render(); renderProps();
+        }
       });
       L.layerSwitches.appendChild(g);
-    }
-  }
-
-  function renderAPs() {
-    L.layerAps.innerHTML = '';
-    for (const ap of state.aps) {
-      const p = m2px(ap.x, ap.y);
-      const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-      g.setAttribute('transform', 'translate(' + (p.x - 20) + ',' + (p.y - 20) + ')');
-      g.dataset.kind = 'ap'; g.dataset.id = ap.id; g.style.cursor = 'move';
-      const fo = document.createElementNS('http://www.w3.org/2000/svg', 'foreignObject');
-      fo.setAttribute('width', 40); fo.setAttribute('height', 40);
-      const div = document.createElement('div');
-      div.setAttribute('xmlns', 'http://www.w3.org/1999/xhtml'); div.style.width = '40px'; div.style.height = '40px';
-      div.style.color = '#2E5EAA'; div.innerHTML = window.getEditorIcon('ap');
-      fo.appendChild(div); g.appendChild(fo);
-      const lbl = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-      lbl.setAttribute('x', 20); lbl.setAttribute('y', 52); lbl.setAttribute('text-anchor', 'middle'); lbl.setAttribute('class', 'svg-label');
-      lbl.textContent = ap.name; g.appendChild(lbl);
-      g.addEventListener('mousedown', e => startDrag(e, 'ap', ap.id));
-      g.addEventListener('click', e => {
-        e.stopPropagation();
-        if (state.tool === 'select') { state.selected = { kind:'ap', id:ap.id }; state.multiSelected = []; render(); renderProps(); }
-      });
-      L.layerAps.appendChild(g);
     }
   }
 
@@ -1132,50 +1294,83 @@
     L.layerSelection.innerHTML = '';
     if (state.drag) return;
     if (state.multiSelected.length > 1) return;
-    if (!state.selected || state.selected.kind !== 'element') return;
-    const el = state.elements.find(x => x.id === state.selected.id);
-    if (!el || el.type === 'text') return;
+    if (!state.selected) return;
+
+    let el, isWall = false, isText = false;
+    if (state.selected.kind === 'element') {
+      el = state.elements.find(x => x.id === state.selected.id);
+      if (!el) return;
+      isWall = el.type === 'wall';
+      isText = el.type === 'text';
+    } else if (state.selected.kind === 'ap') {
+      el = state.aps.find(x => x.id === state.selected.id);
+    } else if (state.selected.kind === 'device') {
+      el = state.devices.find(x => x.id === state.selected.id);
+    } else if (state.selected.kind === 'switch') {
+      el = state.switches.find(x => x.id === state.selected.id);
+    }
+    if (!el || isText) return;
 
     let x1, y1, x2, y2;
-    if (el.type === 'wall') {
+    if (isWall) {
       const a = m2px(el.x1, el.y1), b = m2px(el.x2, el.y2);
-      x1 = Math.min(a.x, b.x); y1 = Math.min(a.y, b.y); x2 = Math.max(a.x, b.x); y2 = Math.max(a.y, b.y);
+      x1 = Math.min(a.x, b.x); y1 = Math.min(a.y, b.y); 
+      x2 = Math.max(a.x, b.x); y2 = Math.max(a.y, b.y);
+      // Делаем рамку видимой, если стена абсолютно ровная (ширина или высота 0)
       if (x2 - x1 < 12) { x1 -= 6; x2 += 6; }
       if (y2 - y1 < 12) { y1 -= 6; y2 += 6; }
-    } else if (el.type === 'shape') {
-      const p = m2px(el.x, el.y); x1 = p.x; y1 = p.y; x2 = p.x + (el.width || 4) * PX_PER_M; y2 = p.y + (el.height || 3) * PX_PER_M;
-    } else if (el.type === 'furniture') {
-      const p = m2px(el.x, el.y); const w = (el.width || 1.5) * PX_PER_M; const h = (el.height || 1) * PX_PER_M;
-      x1 = p.x - w/2; y1 = p.y - h/2; x2 = p.x + w/2; y2 = p.y + h/2;
-    } else return;
-
-    if (el.type !== 'wall') {
-      const r = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-      r.setAttribute('x', x1); r.setAttribute('y', y1); r.setAttribute('width', x2 - x1); r.setAttribute('height', y2 - y1);
-      r.setAttribute('fill', 'none'); r.setAttribute('stroke', '#2E5EAA'); r.setAttribute('stroke-width', '1'); r.setAttribute('stroke-dasharray', '3 3');
-      r.setAttribute('pointer-events', 'none'); L.layerSelection.appendChild(r);
+    } else {
+      const p = m2px(el.x, el.y);
+      const w = (el.width || 1) * PX_PER_M;
+      const h = (el.height || 1) * PX_PER_M;
+      x1 = p.x - w/2; y1 = p.y - h/2;
+      x2 = p.x + w/2; y2 = p.y + h/2;
     }
 
+    // Рисуем синюю пунктирную рамку
+    const r = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+    r.setAttribute('x', x1); r.setAttribute('y', y1); 
+    r.setAttribute('width', x2 - x1); r.setAttribute('height', y2 - y1);
+    r.setAttribute('fill', 'none'); r.setAttribute('stroke', '#2E5EAA'); 
+    r.setAttribute('stroke-width', '1.5'); r.setAttribute('stroke-dasharray', '4 3');
+    r.setAttribute('pointer-events', 'none'); 
+    L.layerSelection.appendChild(r);
+
+    // Координаты маркеров
     let markers = [];
-    if (el.type === 'wall') {
+    if (isWall) {
       const a = m2px(el.x1, el.y1), b = m2px(el.x2, el.y2);
-      markers = [{ x: a.x, y: a.y, which: 'start' }, { x: b.x, y: b.y, which: 'end' }];
+      markers = [
+        { x: a.x, y: a.y, which: 'start', c: 'move' }, 
+        { x: b.x, y: b.y, which: 'end', c: 'move' }
+      ];
     } else {
       const cx = (x1 + x2) / 2, cy = (y1 + y2) / 2;
       markers = [
-        { x: x1, y: y1, c: 'nwse-resize' }, { x: cx, y: y1, c: 'ns-resize' }, { x: x2, y: y1, c: 'nesw-resize' }, { x: x2, y: cy, c: 'ew-resize' },
-        { x: x2, y: y2, c: 'nwse-resize' }, { x: cx, y: y2, c: 'ns-resize' }, { x: x1, y: y2, c: 'nesw-resize' }, { x: x1, y: cy, c: 'ew-resize' }
+        { x: x1, y: y1, c: 'nwse-resize' }, { x: cx, y: y1, c: 'ns-resize' }, 
+        { x: x2, y: y1, c: 'nesw-resize' }, { x: x2, y: cy, c: 'ew-resize' },
+        { x: x2, y: y2, c: 'nwse-resize' }, { x: cx, y: y2, c: 'ns-resize' }, 
+        { x: x1, y: y2, c: 'nesw-resize' }, { x: x1, y: cy, c: 'ew-resize' }
       ];
     }
 
     markers.forEach(cn => {
       const mk = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-      mk.setAttribute('x', cn.x - 5); mk.setAttribute('y', cn.y - 5); mk.setAttribute('width', 10); mk.setAttribute('height', 10);
-      mk.setAttribute('fill', '#fff'); mk.setAttribute('stroke', '#2E5EAA'); mk.setAttribute('stroke-width', '2');
-      mk.style.cursor = cn.c || 'move'; mk.style.pointerEvents = 'all';
+      const sz = 8; // Размер квадратика
+      // Центрируем квадратик ровно на углу рамки
+      mk.setAttribute('x', cn.x - sz/2); 
+      mk.setAttribute('y', cn.y - sz/2); 
+      mk.setAttribute('width', sz); 
+      mk.setAttribute('height', sz);
+      mk.setAttribute('fill', '#fff'); 
+      mk.setAttribute('stroke', '#2E5EAA'); 
+      mk.setAttribute('stroke-width', '2');
+      mk.style.cursor = cn.c; 
+      mk.style.pointerEvents = 'all';
+      
       mk.addEventListener('mousedown', ev => {
         ev.stopPropagation(); ev.preventDefault();
-        if (el.type === 'wall') startWallResize(ev, el, cn.which);
+        if (isWall) startWallResize(ev, el, cn.which);
         else startShapeResize(ev, el, cn.x, cn.y, x1, y1, x2, y2);
       });
       L.layerSelection.appendChild(mk);
@@ -1332,28 +1527,67 @@
   }
 
   function startShapeResize(e, el, mx, my, x1, y1, x2, y2) {
+    const sz = 8;
+    // Определяем, за какой именно угол/сторону мы тянем
+    let which = '';
+    if (Math.abs(mx - x1) < sz) which += 'w';
+    if (Math.abs(mx - x2) < sz) which += 'e';
+    if (Math.abs(my - y1) < sz) which += 'n';
+    if (Math.abs(my - y2) < sz) which += 's';
+    
+    // Если это центральный маркер (тянем за сторону)
+    if (which === '') which = 'se'; 
+
     const start = {
-      w: el.width || (el.type === 'furniture' ? 1.5 : 4), h: el.height || (el.type === 'furniture' ? 1 : 3),
-      x: el.x, y: el.y,
-      which: (mx === x1 ? 'w' : mx === x2 ? 'e' : '') + (my === y1 ? 'n' : my === y2 ? 's' : ''),
+      w: el.width || 1,
+      h: el.height || 1,
+      x: el.x,
+      y: el.y,
       mm: eventToM(e).m
     };
+
     function onMove(ev) {
-      const em = eventToM(ev); const dx = em.m.x - start.mm.x, dy = em.m.y - start.mm.y;
+      const em = eventToM(ev);
+      const dx = em.m.x - start.mm.x;
+      const dy = em.m.y - start.mm.y;
+      
       let w = start.w, h = start.h, x = start.x, y = start.y;
-      if (start.which.includes('e')) w += dx;
-      if (start.which.includes('w')) { w -= dx; x += dx; }
-      if (start.which.includes('s')) h += dy;
-      if (start.which.includes('n')) { h -= dy; y += dy; }
-      if (w < 0.5) w = 0.5; if (h < 0.5) h = 0.5;
-      el.width = +w.toFixed(2); el.height = +h.toFixed(2); el.x = +snap(x).toFixed(2); el.y = +snap(y).toFixed(2);
+
+      if (which.includes('e')) w += dx;
+      if (which.includes('w')) { w -= dx; x += dx; }
+      if (which.includes('s')) h += dy;
+      if (which.includes('n')) { h -= dy; y += dy; }
+
+      // Минимальный размер 0.5 м
+      if (w < 0.5) { w = 0.5; if (which.includes('w')) x = start.x + start.w - 0.5; }
+      if (h < 0.5) { h = 0.5; if (which.includes('n')) y = start.y + start.h - 0.5; }
+
+      el.width = +w.toFixed(2); 
+      el.height = +h.toFixed(2);
+      el.x = +snap(x).toFixed(2); 
+      el.y = +snap(y).toFixed(2);
+      
       render();
     }
+
     async function onUp() {
-      document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp); pushHistory('resize');
-      if (state.projectId && el.type === 'furniture') { try { flashSaving(); await EditorAPI.updateElement(el.id, EditorAPI.elementToDB(el)); flashSaved(); } catch (err) { flashError(err.message); } }
+      document.removeEventListener('mousemove', onMove); 
+      document.removeEventListener('mouseup', onUp); 
+      pushHistory('resize');
+      
+      if (state.projectId) {
+        try {
+          flashSaving();
+          if (state.selected.kind === 'element') await EditorAPI.updateElement(el.id, EditorAPI.elementToDB(el));
+          else if (state.selected.kind === 'ap') await EditorAPI.updateAP(el.id, EditorAPI.apToDB(el));
+          else if (state.selected.kind === 'device') await EditorAPI.updateDevice(el.id, EditorAPI.deviceToDB(el));
+          else if (state.selected.kind === 'switch') await EditorAPI.updateSwitch(el.id, EditorAPI.switchToDB(el));
+          flashSaved();
+        } catch (err) { flashError(err.message); }
+      }
     }
-    document.addEventListener('mousemove', onMove); document.addEventListener('mouseup', onUp);
+    document.addEventListener('mousemove', onMove); 
+    document.addEventListener('mouseup', onUp);
   }
 
   // ============================================================
@@ -1381,6 +1615,7 @@
   });
 
   svg.addEventListener('click', async e => {
+    if (state._justDragged) return; 
     if (!state.project) return;
     if (e.target.closest && e.target.closest('[data-kind]')) return;
     const em = eventToM(e);
@@ -1495,29 +1730,74 @@
     if (state.tool !== 'select' || !state.project) return;
     if (e.target.closest && e.target.closest('[data-kind]')) return;
     if (e.button !== 0) return;
+    
     e.preventDefault();
+    
     const r0 = svg.getBoundingClientRect();
     const sx = e.clientX - r0.left, sy = e.clientY - r0.top;
     let moved = false;
+
     function onMove(ev) {
       const cx = ev.clientX - r0.left, cy = ev.clientY - r0.top;
       if (Math.hypot(cx - sx, cy - sy) < 5) return;
+      
       moved = true;
       const left = Math.min(sx, cx), top = Math.min(sy, cy), w = Math.abs(cx - sx), h = Math.abs(cy - sy);
-      selectionRectEl.style.left = left + 'px'; selectionRectEl.style.top = top + 'px';
-      selectionRectEl.style.width = w + 'px'; selectionRectEl.style.height = h + 'px'; selectionRectEl.style.display = 'block';
+      selectionRectEl.style.left = left + 'px'; 
+      selectionRectEl.style.top = top + 'px';
+      selectionRectEl.style.width = w + 'px'; 
+      selectionRectEl.style.height = h + 'px'; 
+      selectionRectEl.style.display = 'block';
     }
+
     function onUp(ev) {
-      document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp); selectionRectEl.style.display = 'none';
+      window.removeEventListener('mousemove', onMove); 
+      window.removeEventListener('mouseup', onUp); 
+      selectionRectEl.style.display = 'none';
+      
       if (!moved) return;
+      
       const cx = ev.clientX - r0.left, cy = ev.clientY - r0.top;
       const p1 = clientToM(Math.min(sx, cx), Math.min(sy, cy)), p2 = clientToM(Math.max(sx, cx), Math.max(sy, cy));
       const picked = [];
-      const check = (arr, kind) => arr.forEach(o => { if (o.x >= p1.x && o.x <= p2.x && o.y >= p1.y && o.y <= p2.y) picked.push({ kind, id: o.id }); });
-      check(state.aps, 'ap'); check(state.devices, 'device'); check(state.switches, 'switch');
-      state.multiSelected = picked; state.selected = null; render(); renderProps();
+
+      // 1. Выделяем AP, Устройства, Коммутаторы
+      const check = (arr, kind) => arr.forEach(o => { 
+        if (o.x >= p1.x && o.x <= p2.x && o.y >= p1.y && o.y <= p2.y) picked.push({ kind, id: o.id }); 
+      });
+      check(state.aps, 'ap'); 
+      check(state.devices, 'device'); 
+      check(state.switches, 'switch');
+
+      // 2. Выделяем Стены
+      state.elements.filter(el => el.type === 'wall').forEach(w => {
+        const wMinX = Math.min(w.x1, w.x2), wMaxX = Math.max(w.x1, w.x2);
+        const wMinY = Math.min(w.y1, w.y2), wMaxY = Math.max(w.y1, w.y2);
+        if (wMinX <= p2.x && wMaxX >= p1.x && wMinY <= p2.y && wMaxY >= p1.y) {
+          picked.push({ kind: 'element', id: w.id });
+        }
+      });
+
+      // 3. Выделяем Двери, Мебель, Текст
+      state.elements.filter(el => el.type === 'door' || el.type === 'furniture' || el.type === 'text').forEach(o => {
+        if (o.x >= p1.x && o.x <= p2.x && o.y >= p1.y && o.y <= p2.y) {
+          picked.push({ kind: 'element', id: o.id });
+        }
+      });
+
+      state.multiSelected = picked; 
+      state.selected = null; 
+      
+      // СТАВИМ ФЛАГ: говорим, что мы только что закончили выделение
+      state._justDragged = true;
+      setTimeout(() => { state._justDragged = false; }, 100);
+
+      render(); 
+      renderProps();
     }
-    document.addEventListener('mousemove', onMove); document.addEventListener('mouseup', onUp);
+    
+    window.addEventListener('mousemove', onMove); 
+    window.addEventListener('mouseup', onUp);
   });
 
   wrap.addEventListener('dragover', e => e.preventDefault());
@@ -1624,7 +1904,6 @@
   async function delSel() {
     const list = state.multiSelected.length ? state.multiSelected : (state.selected ? [state.selected] : []);
     if (!list.length) return;
-    if (!confirm('Удалить ' + list.length + ' объектов?')) return;
     pushHistory('удаление');
     for (const s of list) {
       if (s.kind === 'ap') state.aps = state.aps.filter(x => x.id !== s.id);
@@ -1826,13 +2105,21 @@
 
   function renderProps() {
     const sidePanel = document.getElementById('propsSidePanel');
-    if (state.multiSelected.length > 1) {
-      sidePanel.style.display = ''; document.body.classList.add('props-open');
-      propsPanel.innerHTML = '<div class="props-empty"><div class="props-empty-icon">🎯</div><div>Выделено <b>' + state.multiSelected.length + '</b> объектов</div></div>';
+    
+    // Показываем панель, если выделен хотя бы 1 объект через Shift
+    if (state.multiSelected.length >= 1) {
+      sidePanel.style.display = '';
+      document.body.classList.add('props-open');
+      propsPanel.innerHTML = '<div class="props-empty"><div class="props-empty-icon"></div><div>Выделено <b>' + state.multiSelected.length + '</b> объектов<br><span style="font-size:10px;opacity:0.7">Нажмите Esc, чтобы снять выделение</span></div></div>';
       return;
     }
+
+    // Ничего не выделено — скрываем
     if (!state.selected) { sidePanel.style.display = 'none'; document.body.classList.remove('props-open'); return; }
-    sidePanel.style.display = ''; document.body.classList.add('props-open');
+    
+    // Одиночное выделение
+    sidePanel.style.display = '';
+    document.body.classList.add('props-open');
 
     if (state.selected.kind === 'ap') return propsAP();
     if (state.selected.kind === 'device') return propsDevice();

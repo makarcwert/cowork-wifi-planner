@@ -12,8 +12,8 @@ from openpyxl.utils import get_column_letter
 
 from ..database import get_db
 from ..models import (
-    Project, AccessPoint, ClientDevice, PlanElement,
-    Measurement, SSIDProfile,
+    Project, AccessPoint, ClientDevice, PlanElement
+    , SSIDProfile,
 )
 from ..physics import coverage_statistics, analyze_channels
 
@@ -82,15 +82,7 @@ def export_csv(project_id: int, db: Session = Depends(get_db)):
                     el.x1, el.y1, el.x2, el.y2])
     w.writerow([])
 
-    w.writerow(["# Измерения"])
-    w.writerow(["id", "name", "x_m", "y_m", "rssi", "snr",
-                "interference", "mode", "measured_at"])
-    for m in db.query(Measurement).filter(
-            Measurement.project_id == project_id).all():
-        w.writerow([m.id, m.name or "", m.x, m.y, m.rssi,
-                    m.snr or "", m.interference or "", m.mode,
-                    m.measured_at.isoformat() if m.measured_at else ""])
-    w.writerow([])
+
 
     w.writerow(["# Статистика покрытия"])
     aps = _load_aps(db, project_id)
@@ -185,17 +177,6 @@ def export_xlsx(project_id: int, db: Session = Depends(get_db)):
                    el.x1, el.y1, el.x2, el.y2])
     autosize(ws)
 
-    ws = wb.create_sheet("Измерения")
-    ws.append(["ID", "Имя", "X, м", "Y, м", "RSSI, дБм",
-               "SNR, дБ", "Интерференция", "Режим", "Дата"])
-    style_header(ws)
-    for m in db.query(Measurement).filter(
-            Measurement.project_id == project_id).all():
-        ws.append([m.id, m.name or "", m.x, m.y, m.rssi,
-                   m.snr or "", m.interference or "", m.mode,
-                   m.measured_at.strftime("%d.%m.%Y %H:%M")
-                   if m.measured_at else ""])
-    autosize(ws)
 
     ws = wb.create_sheet("SSID")
     ws.append(["ID", "Имя", "Тип", "Аутентификация", "Шифрование",

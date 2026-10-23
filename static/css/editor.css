@@ -729,3 +729,16 @@ body.props-open .project-info-show {
   height: 20px;
   pointer-events: none;
 }
+/* Иконки внутри рамки должны заполнять её на 100% */
+foreignObject > div > svg {
+  width: 100% !important;
+  height: 100% !important;
+  display: block;
+}
+
+/* Убираем отступы у контейнера иконки */
+foreignObject > div {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}

@@ -11,38 +11,51 @@
   document.documentElement.setAttribute('data-theme', t);
 </script>
 <style>
-  /* Дополнительные стили для админки */
-  .admin-header { display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 20px; }
-  .search-bar { width: 300px; }
-  .search-bar input { width: 100%; padding: 8px 12px; background: var(--panel-2); border: 1px solid var(--border); color: var(--text); border-radius: 4px; font-size: 13px; }
-  .search-bar input:focus { border-color: var(--accent); outline: none; }
-  
-  /* Уведомления (Toasts) */
-  #toast-container { position: fixed; bottom: 20px; right: 20px; z-index: 1000; display: flex; flex-direction: column; gap: 10px; }
-  .toast { background: var(--panel); color: var(--text); padding: 12px 20px; border-radius: 6px; border-left: 4px solid var(--accent); box-shadow: 0 4px 12px rgba(0,0,0,0.3); font-size: 13px; animation: slideIn 0.3s ease-out; display: flex; align-items: center; gap: 10px; }
+  .admin-header { display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 24px; border-bottom: 1px solid var(--border); padding-bottom: 16px; }
+  .admin-header h1 { margin: 0; font-size: 22px; font-weight: 600; }
+  .tabs { display: flex; border-bottom: 1px solid var(--border); margin-bottom: 24px; }
+  .tab { padding: 10px 16px; background: transparent; border: none; color: var(--text-dim); cursor: pointer; font-size: 13px; border-bottom: 2px solid transparent; margin-bottom: -1px; transition: color 0.15s; }
+  .tab:hover { color: var(--text); }
+  .tab.active { color: var(--text); border-bottom-color: var(--accent); font-weight: 500; }
+  .metric-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 24px; }
+  .metric-card { background: var(--panel); border: 1px solid var(--border); border-radius: 6px; padding: 16px 20px; position: relative; overflow: hidden; }
+  .metric-card .label { font-size: 11px; text-transform: uppercase; color: var(--text-dim); font-weight: 600; margin-bottom: 8px; letter-spacing: 0.5px; }
+  .metric-card .value { font-size: 28px; font-weight: 700; color: var(--text); line-height: 1; }
+  .metric-card .sub { font-size: 12px; color: var(--text-dim); margin-top: 8px; }
+  .metric-card::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: var(--accent); opacity: 0; transition: opacity 0.2s; }
+  .metric-card:hover::before { opacity: 1; }
+  .btn-sm { background: var(--panel); border: 1px solid var(--border); color: var(--text); padding: 6px 14px; border-radius: 4px; font-size: 13px; cursor: pointer; transition: background 0.15s; }
+  .btn-sm:hover { background: var(--panel-2); }
+  .btn-sm.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .btn-sm.primary:hover { background: var(--accent-hover); }
+  .toolbar-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+  .toolbar-bar h2 { font-size: 16px; margin: 0; font-weight: 500; }
+  .tb-actions { display: flex; gap: 12px; align-items: center; }
+  .search-field { padding: 6px 12px; background: var(--panel); border: 1px solid var(--border); color: var(--text); border-radius: 4px; font-size: 13px; outline: none; width: 240px; transition: border-color 0.15s; }
+  .search-field:focus { border-color: var(--accent); }
+  #toast-container { position: fixed; bottom: 24px; right: 24px; z-index: 1000; display: flex; flex-direction: column; gap: 10px; }
+  .toast { background: var(--panel); color: var(--text); padding: 12px 20px; border-radius: 4px; border: 1px solid var(--border); border-left: 4px solid var(--accent); box-shadow: 0 4px 12px rgba(0,0,0,0.2); font-size: 13px; animation: slideIn 0.2s ease-out; }
   .toast.success { border-left-color: var(--green); }
   .toast.error { border-left-color: var(--red); }
-  @keyframes slideIn { from { transform: translateX(100%); } to { transform: translateX(0); } }
-
-  /* Прогресс-бар для метрик */
-  .progress-bg { height: 6px; background: var(--panel-2); border-radius: 3px; margin-top: 8px; overflow: hidden; }
-  .progress-fill { height: 100%; background: var(--accent); border-radius: 3px; transition: width 0.5s; }
+  @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
 </style>
 </head>
 <body>
 
 <header class="topbar-drawing">
   <div class="topbar-left">
-    <span class="brand">📡 CoworkWiFi Planner</span>
+    <a class="brand-link" href="/static/index.html">CoworkWiFi Planner</a>
     <a class="menu-item" href="/static/index.html">Главная</a>
     <a class="menu-item" href="/static/editor.html">Редактор</a>
-    <a class="menu-item" href="/static/measurements.html">Измерения</a>
-    <a class="menu-item active" href="/static/admin.html">Админ</a>
+    <a class="menu-item active" id="adminLink" href="/static/admin.html">Админ</a>
   </div>
   <div class="spacer"></div>
   <div class="topbar-right">
+    <!-- Скрытые элементы редактора, чтобы шапка была идентичной -->
+    <select id="projectSelect" style="display:none"></select>
+    
     <button class="btn-icon" id="themeToggle" title="Тема">☀</button>
-    <div class="avatar" id="userAvatar">?</div>
+    <div class="avatar" id="userAvatar" title="Аккаунт">?</div>
     <span class="brand" id="userName" style="font-size:12px;font-weight:400;color:var(--text-dim)"></span>
     <button class="btn-icon" id="logoutBtn" title="Выйти">⏻</button>
   </div>
@@ -50,70 +63,71 @@
 
 <main class="container">
   <div class="admin-header">
-    <h1>Панель администратора</h1>
-    <div class="search-bar" id="searchWrapper" style="display:none">
-      <input type="text" id="searchInput" placeholder="Поиск...">
-    </div>
+    <h1>Управление системой</h1>
   </div>
 
   <div class="tabs">
-    <button class="tab active" data-tab="dashboard">📊 Обзор</button>
-    <button class="tab" data-tab="users">👥 Пользователи</button>
-    <button class="tab" data-tab="projects">📁 Проекты</button>
-    <button class="tab" data-tab="audit">📜 Журнал</button>
+    <button class="tab active" data-tab="dashboard">Обзор</button>
+    <button class="tab" data-tab="users">Пользователи</button>
+    <button class="tab" data-tab="projects">Проекты</button>
+    <button class="tab" data-tab="audit">Журнал действий</button>
   </div>
 
-  <!-- Обзор -->
   <section id="tab-dashboard">
     <div class="metric-grid" id="metricGrid"></div>
     <div class="chart-row">
       <div class="chart-box"><h3>Регистрации за 7 дней</h3><div class="bar-chart" id="regChart"></div></div>
-      <div class="chart-box"><h3>Проекты за 7 дней</h3><div class="bar-chart" id="projChart"></div></div>
+      <div class="chart-box"><h3>Новые проекты за 7 дней</h3><div class="bar-chart" id="projChart"></div></div>
     </div>
     <div class="chart-row">
-      <div class="chart-box"><h3>Роли</h3><div id="roleChart"></div></div>
-      <div class="chart-box"><h3>Содержимое проектов</h3><div id="contentChart"></div></div>
+      <div class="chart-box"><h3>Распределение ролей</h3><div id="roleChart"></div></div>
+      <div class="chart-box"><h3>Объекты в проектах</h3><div id="contentChart"></div></div>
     </div>
   </section>
 
-  <!-- Пользователи -->
   <section id="tab-users" style="display:none">
     <div class="toolbar-bar">
-      <h2>Пользователи</h2>
-      <button class="btn-primary-sm" id="addUserBtn">➕ Добавить</button>
+      <h2>Список пользователей</h2>
+      <div class="tb-actions">
+        <input type="text" id="searchUsers" placeholder="Поиск по ФИО или Email..." class="search-field">
+        <button class="btn-sm primary" id="addUserBtn">Добавить пользователя</button>
+      </div>
     </div>
     <div class="table-wrap">
       <table class="table" id="usersTable">
         <thead><tr>
-          <th>ID</th><th>ФИО</th><th>Email</th><th>Роль</th><th>Статус</th><th>Регистрация</th><th>Последний вход</th><th></th>
+          <th>ID</th><th>ФИО</th><th>Email</th><th>Роль</th><th>Статус</th><th>Регистрация</th><th>Последний вход</th><th>Действия</th>
         </tr></thead>
         <tbody></tbody>
       </table>
     </div>
   </section>
 
-  <!-- Проекты -->
   <section id="tab-projects" style="display:none">
-    <div class="toolbar-bar"><h2>Все проекты</h2></div>
+    <div class="toolbar-bar">
+      <h2>Все проекты</h2>
+      <div class="tb-actions">
+        <input type="text" id="searchProjects" placeholder="Поиск по названию или владельцу..." class="search-field">
+      </div>
+    </div>
     <div class="table-wrap">
       <table class="table" id="projectsTable">
         <thead><tr>
-          <th>ID</th><th>Название</th><th>Владелец</th><th>Размер</th><th>Элем.</th><th>AP</th><th>Создан</th><th></th>
+          <th>ID</th><th>Название</th><th>Владелец</th><th>Размеры</th><th>Элементы</th><th>Точки доступа</th><th>Дата создания</th><th></th>
         </tr></thead>
         <tbody></tbody>
       </table>
     </div>
   </section>
 
-  <!-- Журнал -->
   <section id="tab-audit" style="display:none">
     <div class="toolbar-bar">
-      <h2>Журнал действий</h2>
-      <button class="btn" id="refreshAudit">🔄 Обновить</button>
+      <h2>Журнал событий</h2>
+      <button class="btn-sm" id="refreshAudit">Обновить</button>
     </div>
     <div class="table-wrap">
       <table class="table" id="auditTable">
-        <thead><tr><th>Время</th><th>Пользователь</th><th>Действие</th><th>Сущность</th><th>ID</th></tr></thead>
+        <thead><tr><th>Время</th><th>Сотрудник</th><th>Действие</th><th>Объект</th><th>ID объекта</th></tr></thead>
         <tbody></tbody>
       </table>
     </div>
@@ -122,12 +136,13 @@
 
 <!-- Модалка: Новый пользователь -->
 <div class="modal-mask" id="userModal">
-  <div class="modal">
-    <h2>Новый пользователь</h2>
+  <div class="modal" style="position: relative;">
+    <button class="btn-close modal-close-top" onclick="document.getElementById('userModal').classList.remove('show')" title="Закрыть"><svg viewBox="0 0 100 100" fill="none" stroke="currentColor" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"><line x1="25" y1="25" x2="75" y2="75"></line><line x1="75" y1="25" x2="25" y2="75"></line></svg></button>
+    <h2>Добавление пользователя</h2>
     <label>ФИО</label><input type="text" id="nuName" placeholder="Иван Иванов">
     <label>Email</label><input type="email" id="nuEmail" placeholder="user@example.com">
     <label>Пароль</label><input type="password" id="nuPassword" placeholder="минимум 6 символов">
-    <label>Роль</label>
+    <label>Роль в системе</label>
     <select id="nuRole">
       <option value="analyst">Аналитик</option>
       <option value="engineer">Инженер</option>
@@ -142,8 +157,9 @@
 
 <!-- Модалка: Смена роли -->
 <div class="modal-mask" id="roleModal">
-  <div class="modal" style="width:320px">
-    <h2>Сменить роль</h2>
+  <div class="modal" style="width:340px; position: relative;">
+    <button class="btn-close modal-close-top" onclick="document.getElementById('roleModal').classList.remove('show')" title="Закрыть"><svg viewBox="0 0 100 100" fill="none" stroke="currentColor" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"><line x1="25" y1="25" x2="75" y2="75"></line><line x1="75" y1="25" x2="25" y2="75"></line></svg></button>
+    <h2>Смена роли</h2>
     <p style="font-size:12px;color:var(--text-dim);margin-bottom:14px" id="roleModalEmail"></p>
     <label>Новая роль</label>
     <select id="roleSelect">
@@ -153,12 +169,11 @@
     </select>
     <div class="modal-btns">
       <button class="cancel" id="roleCancel">Отмена</button>
-      <button class="ok" id="roleSave">Сохранить</button>
+      <button class="ok" id="roleSave">Применить</button>
     </div>
   </div>
 </div>
 
-<!-- Контейнер для уведомлений -->
 <div id="toast-container"></div>
 
 <script src="/static/js/api.js"></script>
