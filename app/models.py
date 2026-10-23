@@ -37,8 +37,6 @@ class Project(Base):
                            cascade="all, delete-orphan")
     aps = relationship("AccessPoint", back_populates="project",
                        cascade="all, delete-orphan")
-    measurements = relationship("Measurement", back_populates="project",
-                                cascade="all, delete-orphan")
     ssid_profiles = relationship("SSIDProfile", back_populates="project",
                                  cascade="all, delete-orphan")
     wlc = relationship("WLC", back_populates="project",
@@ -113,22 +111,6 @@ class AccessPoint(Base):
     project = relationship("Project", back_populates="aps")
 
 
-class Measurement(Base):
-    __tablename__ = "measurements"
-
-    id = Column(Integer, primary_key=True)
-    project_id = Column(Integer, ForeignKey("projects.id"), nullable=False)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
-    name = Column(String(80), nullable=True)
-    x = Column(Float, nullable=False)
-    y = Column(Float, nullable=False)
-    rssi = Column(Float, nullable=False, default=-65.0)
-    snr = Column(Float, nullable=True)
-    interference = Column(Float, nullable=True)
-    mode = Column(String(10), default="manual")
-    measured_at = Column(DateTime, default=datetime.utcnow)
-
-    project = relationship("Project", back_populates="measurements")
 
 
 class SSIDProfile(Base):
